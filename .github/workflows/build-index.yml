@@ -1,0 +1,58 @@
+name: Build index.html
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/build-index.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if index.html already present
+        id: check
+        run: |
+          if [ -f index.html ] && [ "$(wc -c < index.html)" -gt 80000 ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "index.html already present ($(wc -c < index.html) bytes) - skipping fetch"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch index.html
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          URL='https://static.teamily.ai/files/077de1f0-0988-463f-a589-5d18a1b74bcd/payload.txt?tk=ZmlsZTowNzdkZTFmMC0wOTg4LTQ2M2YtYTU4OS01ZDE4YTFiNzRiY2Q6MTc5Mjc1NzA1Ng.OWRjZTdjMjdjNGJkMjRiNmQ2NGY5NWUxOGQwYTBlOTg'
+          curl -sSL --fail --retry 3 -o index.html "$URL"
+          SIZE=$(wc -c < index.html)
+          echo "downloaded: $SIZE bytes"
+          if [ "$SIZE" -lt 80000 ]; then
+            echo "::error::download too small ($SIZE bytes) - the temporary link has probably expired"
+            head -c 300 index.html || true
+            exit 1
+          fi
+          head -c 60 index.html
+          echo ""
+          grep -q 'buildDayTrade' index.html && echo "OK: 當沖決策引擎 present"
+
+      - name: Commit index.html
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --staged --quiet; then
+            echo "no change"
+          else
+            git commit -m "build: 產生 index.html（當沖決策版）"
+            git push
+            echo "committed"
+          fi
