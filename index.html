@@ -1,0 +1,1545 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0f14" />
+<meta name="description" content="台股盤中主力訊號監控（純網頁版）：忠實移植原 twstock-monitor B 方案的加權判讀引擎，免安裝、開網址即用。" />
+<title>台股主力訊號監控 · 純網頁版</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#121821; --panel2:#182231; --line:#22303f;
+    --text:#e8eef7; --muted:#8ba0b6; --up:#ff4d4f; --down:#12b886; --flat:#9aa7b4;
+    --accent:#3d8bfd; --warn:#ffb020; --ok:#12b886; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:radial-gradient(1100px 560px at 50% -220px,#16202c 0%,var(--bg) 62%);
+    color:var(--text);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:calc(28px + env(safe-area-inset-bottom));
+  }
+  .wrap{max-width:1140px;margin:0 auto;padding:18px 16px 0}
+  @media (max-width:560px){ .wrap{padding:12px 12px 0} }
+
+  header.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .brand{display:flex;align-items:center;gap:11px;min-width:0}
+  .logo{width:42px;height:42px;border-radius:12px;flex:0 0 auto;
+    background:linear-gradient(145deg,#3d8bfd,#1f4fd8);display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:19px;letter-spacing:.5px;box-shadow:0 6px 18px -6px rgba(61,139,253,.75)}
+  h1{font-size:19px;margin:0;letter-spacing:.3px;font-weight:700}
+  .sub{margin:2px 0 0;font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--flat);display:inline-block;flex:0 0 auto}
+  .dot.live{background:var(--down);box-shadow:0 0 0 0 rgba(18,184,134,.6);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(18,184,134,.55)}70%{box-shadow:0 0 0 8px rgba(18,184,134,0)}100%{box-shadow:0 0 0 0 rgba(18,184,134,0)}}
+  .topActions{margin-left:auto;display:flex;gap:8px}
+
+  button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--text);padding:8px 13px;transition:.15s;-webkit-tap-highlight-color:transparent}
+  button:hover{border-color:#31465c;background:#1d2a3a}
+  button:active{transform:scale(.98)}
+  button.primary{background:linear-gradient(145deg,#3d8bfd,#2160d8);border-color:transparent;font-weight:600;box-shadow:0 6px 16px -8px rgba(61,139,253,.9)}
+  button.primary:hover{filter:brightness(1.06)}
+  button.ghost{background:transparent}
+
+  .toolbar{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px;margin-bottom:14px}
+  form.add{display:flex;gap:8px;flex-wrap:wrap}
+  input[type=text],input[type=number],select{font:inherit;background:#0d131b;border:1px solid var(--line);color:var(--text);
+    border-radius:10px;padding:10px 12px;outline:none;min-width:0}
+  input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(61,139,253,.16)}
+  #codeInput{flex:1 1 190px}
+  .hint{font-size:12px;color:var(--muted);margin-top:9px;display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .hint b{color:#b9cade;font-weight:600}
+
+  .summary{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .pill{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12.5px;color:var(--muted)}
+  .pill b{color:var(--text);font-variant-numeric:tabular-nums}
+
+  h2.sec{font-size:14px;margin:20px 0 10px;letter-spacing:.4px;color:#cddaea;display:flex;align-items:center;gap:8px}
+  h2.sec .cnt{font-size:11.5px;color:var(--muted);font-weight:400}
+
+  /* signal timeline */
+  .timeline{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .tlrow{display:grid;grid-template-columns:64px 1fr auto;gap:10px;padding:10px 13px;border-bottom:1px solid #1a2431;align-items:start}
+  .tlrow:last-child{border-bottom:none}
+  .tlrow.alert{background:linear-gradient(90deg,rgba(255,77,79,.09),transparent 60%)}
+  .tlrow.bull{background:linear-gradient(90deg,rgba(255,77,79,.05),transparent 60%)}
+  .tlrow.bear{background:linear-gradient(90deg,rgba(18,184,134,.06),transparent 60%)}
+  .tltime{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12.5px;padding-top:2px}
+  .tlmain{min-width:0}
+  .tlhead{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:3px}
+  .tlcode{font-weight:700;font-size:13.5px;letter-spacing:.4px}
+  .tlname{font-size:12.5px;color:#b9cade}
+  .badge{font-size:10.5px;padding:1.5px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+  .badge.big_order{border-color:#5a4a1f;color:#ffd479;background:rgba(255,176,32,.08)}
+  .badge.breakout{border-color:#1f4a5a;color:#7fd4ff;background:rgba(61,139,253,.08)}
+  .badge.price_volume{border-color:#4a1f2a;color:#ff9aa0;background:rgba(255,77,79,.08)}
+  .badge.vwap{border-color:#2a3f5a;color:#9fc0ff;background:rgba(61,139,253,.06)}
+  .badge.price{border-color:#5a3f1f;color:#ffc078;background:rgba(255,176,32,.06)}
+  .badge.limit{border-color:#5a1f1f;color:#ff8080;background:rgba(255,77,79,.12)}
+  .tlreason{font-size:12.5px;color:#a9bccf;line-height:1.45}
+  .tlright{text-align:right;font-variant-numeric:tabular-nums;font-size:12.5px;white-space:nowrap}
+  .empty{padding:22px 14px;text-align:center;color:var(--muted);font-size:13px}
+
+  /* cards */
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px}
+  @media (max-width:560px){ .cards{grid-template-columns:1fr} }
+  .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:var(--radius);
+    padding:13px 14px 12px;position:relative;overflow:hidden}
+  .card::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--flat);opacity:.55}
+  .card.up::before{background:var(--up);opacity:1}
+  .card.down::before{background:var(--down);opacity:1}
+  .cardHead{display:flex;align-items:flex-start;gap:8px;margin-bottom:8px}
+  .ident{display:flex;align-items:baseline;gap:8px;min-width:0;flex-wrap:wrap}
+  .code{font-weight:800;font-size:15px;letter-spacing:.6px;font-variant-numeric:tabular-nums}
+  .name{font-size:14px;color:#cddaea;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:11em}
+  .del{margin-left:auto;background:transparent;border:none;color:#5f7288;font-size:16px;padding:2px 6px;line-height:1;border-radius:8px}
+  .del:hover{color:#ff8080;background:rgba(255,77,79,.1)}
+  .priceRow{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+  .price{font-size:25px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.5px}
+  .chg{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+  .up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--flat)}
+
+  .verdict{border-radius:11px;padding:9px 11px;margin-bottom:9px;border:1px solid var(--line);background:#0f1620}
+  .verdict .vhead{font-size:13.5px;font-weight:700;margin-bottom:3px;line-height:1.4}
+  .verdict .vmeta{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .verdict.lv-strong_bull{border-color:#5a1f1f;background:linear-gradient(180deg,rgba(255,77,79,.12),#0f1620)}
+  .verdict.lv-mild_bull{border-color:#4a2a1f;background:linear-gradient(180deg,rgba(255,77,79,.07),#0f1620)}
+  .verdict.lv-strong_bear{border-color:#1f5a45;background:linear-gradient(180deg,rgba(18,184,134,.12),#0f1620)}
+  .verdict.lv-mild_bear{border-color:#1f4a3a;background:linear-gradient(180deg,rgba(18,184,134,.07),#0f1620)}
+  .verdict.lv-neutral{border-color:#2a3644}
+
+  .rulelist{margin:0 0 9px;padding:0;list-style:none;font-size:12px}
+  .rulelist li{display:flex;gap:7px;align-items:baseline;padding:3px 0;border-bottom:1px dashed #1c2735}
+  .rulelist li:last-child{border-bottom:none}
+  .rulelist .ric{flex:0 0 auto;width:14px;text-align:center}
+  .rulelist .rname{flex:1 1 auto;color:#c3d2e2;min-width:0}
+  .rulelist .rscore{flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--muted);font-size:11.5px}
+  .rulelist .rshort{flex:0 0 auto;color:#8ba0b6;font-size:11.5px;max-width:11em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  @media (max-width:560px){ .rulelist .rshort{max-width:none;white-space:normal;overflow:visible;line-height:1.45} }
+  .rulelist li.na .rname{color:#6d8299}
+  .rulelist li.na .rscore{color:#5a6b7d}
+
+  .grid6{display:grid;grid-template-columns:repeat(3,1fr);gap:7px 10px;font-size:12.5px}
+  @media (max-width:560px){ .grid6{grid-template-columns:repeat(2,1fr)} }
+  .cell{display:flex;justify-content:space-between;gap:6px;border-bottom:1px dashed #1c2735;padding-bottom:4px}
+  .cell .k{color:var(--muted)}
+  .cell .v{font-variant-numeric:tabular-nums;color:#dbe6f2}
+  .cardFoot{margin-top:8px;font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .bookrow{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-top:8px;padding:7px 10px;border-radius:9px;
+    background:#0f1620;border:1px solid var(--line);font-size:12px}
+  .bookrow.na{color:#6d8299;border-style:dashed}
+  .bookrow .bk{color:var(--muted);font-size:11px;letter-spacing:.5px}
+  .bookrow .bv{color:#c3d2e2;font-variant-numeric:tabular-nums}
+  .bookrow .bv b{color:#e8eef7}
+
+  /* rules table */
+  .rules{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+  .rtable{width:100%;border-collapse:collapse;font-size:12.5px}
+  .rtable th,.rtable td{padding:9px 11px;text-align:left;border-bottom:1px solid #1a2431;vertical-align:top}
+  .rtable th{color:var(--muted);font-weight:600;background:#0f1620}
+  .rtable tr:last-child td{border-bottom:none}
+  .st{font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap;display:inline-block}
+  .st.ok{background:rgba(18,184,134,.12);color:#5fe0b0;border:1px solid #1f5a45}
+  .st.part{background:rgba(255,176,32,.12);color:#ffd479;border:1px solid #5a4a1f}
+  .st.no{background:rgba(255,77,79,.1);color:#ff9aa0;border:1px solid #5a1f1f}
+  .rtable code{background:#0d131b;border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:11.5px;color:#9fc0ff}
+
+  /* settings */
+  .settings{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-top:14px;display:none}
+  .settings.open{display:block}
+  .sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:12px;color:var(--muted)}
+  .field .desc{font-size:11px;color:#6d8299}
+  .sactions{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap}
+
+  .notice{background:linear-gradient(180deg,#1a1410,#121821);border:1px solid #4a3a1f;border-radius:var(--radius);padding:13px 15px;margin-top:14px;font-size:12.5px;color:#e0cfa8;line-height:1.65}
+  .notice b{color:#ffd479}
+  .notice code{background:#0d131b;border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:11.5px;color:#9fc0ff}
+  /* ---------- 當沖決策面板 ---------- */
+  .dt{border-radius:12px;margin:0 0 10px;overflow:hidden;border:1px solid var(--line);background:#0d131b}
+  .dt-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px 12px 8px}
+  .dt-dir{font-size:26px;font-weight:900;letter-spacing:2px;line-height:1.05}
+  .dt-dir.sm{font-size:17px;letter-spacing:.5px}
+  .dt-px{margin-left:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;
+    color:#c3d2e2;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .dtnote{padding:0 12px 10px;font-size:11.5px;line-height:1.55;color:#a08a5c}
+  .dt-tag{font-size:10.5px;color:var(--muted);letter-spacing:.5px;border:1px solid var(--line);border-radius:999px;padding:1.5px 8px}
+  .dt-conf{font-size:11.5px;font-weight:700;padding:2px 9px;border-radius:999px;border:1px solid;white-space:nowrap}
+  .dt-reason{font-size:12.5px;line-height:1.5;padding:0 12px 9px;color:#a9bccf}
+  .dt.long{background:linear-gradient(180deg,rgba(255,77,79,.17),rgba(13,19,27,.92));border-color:#5f2323}
+  .dt.long .dt-dir{color:#ff5c5e}
+  .dt.long .dt-conf{color:#ffb3b4;border-color:#5f2323;background:rgba(255,77,79,.12)}
+  .dt.short{background:linear-gradient(180deg,rgba(18,184,134,.17),rgba(13,19,27,.92));border-color:#1f5a45}
+  .dt.short .dt-dir{color:#22d6a0}
+  .dt.short .dt-conf{color:#8ff0cf;border-color:#1f5a45;background:rgba(18,184,134,.12)}
+  .dt.wait{background:linear-gradient(180deg,rgba(154,167,180,.1),rgba(13,19,27,.92));border-color:#2a3644}
+  .dt.wait .dt-dir{color:#a8b6c4}
+  .dt.wait .dt-conf{color:#b9cade;border-color:#2a3644;background:rgba(154,167,180,.08)}
+
+  .dtp{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;table-layout:fixed}
+  .dtp td{padding:5px 12px;border-top:1px solid #1c2735;vertical-align:baseline}
+  .dtp tr:first-child td{border-top:1px solid #23303f}
+  .dtp td.k{width:66px;color:#8ba0b6;font-size:11.5px;white-space:nowrap}
+  .dtp td.v{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Courier New",monospace;font-size:14px;font-weight:700;letter-spacing:.2px;white-space:nowrap}
+  .dtp td.m{width:96px;text-align:right;color:#8ba0b6;font-size:11px;white-space:nowrap;overflow:visible}
+  @media (max-width:400px){
+    .dtp td{padding:5px 8px}
+    .dtp td.k{width:54px;font-size:11px}
+    .dtp td.v{font-size:12.5px}
+    .dtp td.m{width:74px;font-size:10px}
+    .dt-dir{font-size:23px}
+    .dt-reason{padding:0 10px 8px}
+  }
+  .dtwl{font-size:11.5px;color:#8ba0b6;margin-bottom:4px}
+  .dtwait{padding:0 12px 11px}
+  .dtwait ul{margin:0;padding-left:16px;font-size:12.5px;line-height:1.6;color:#b9cade}
+  .dtwait ul li{margin-bottom:4px}
+  .dtwait ul li b{color:#ffd479;font-weight:700}
+  .dtblock{padding:0 12px 11px;font-size:12.5px;line-height:1.6;color:#ffb0b2}
+  .dtblock ul{margin:5px 0 0;padding-left:16px;color:#c3d2e2}
+  .dtblock ul li{margin-bottom:3px}
+  .dtbasis{border-top:1px solid #1c2735;background:#0a0f16}
+  .dtbasis summary{cursor:pointer;padding:6px 12px;font-size:11px;color:#7e94ab;list-style:none;user-select:none}
+  .dtbasis summary::-webkit-details-marker{display:none}
+  .dtbasis summary:hover{color:#a9bccf}
+  .dtb-body{padding:2px 12px 10px;font-size:11px;line-height:1.7;color:#8ba0b6}
+  .dtb-body b{color:#c3d2e2;font-variant-numeric:tabular-nums}
+  .dtb-body code{background:#121a24;border:1px solid var(--line);border-radius:4px;padding:0 4px;color:#9fc0ff}
+
+  /* 全域計算依據 */
+  .basisbox{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:14px;overflow:hidden}
+  .basisbox>summary{cursor:pointer;padding:11px 14px;font-size:12.5px;color:#cddaea;list-style:none;user-select:none;font-weight:600}
+  .basisbox>summary::-webkit-details-marker{display:none}
+  .basisbox[open]>summary{border-bottom:1px solid var(--line)}
+  .bbody{padding:12px 14px;font-size:12.5px;line-height:1.7;color:#a9bccf}
+  .bbody table{width:100%;border-collapse:collapse;font-size:12px;margin:9px 0}
+  .bbody th,.bbody td{padding:7px 9px;border-bottom:1px solid #1a2431;text-align:left;vertical-align:top}
+  .bbody th{color:var(--muted);font-weight:600;background:#0f1620}
+  .bbody code{background:#0d131b;border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:11px;color:#9fc0ff}
+  @media (max-width:560px){ .bbody table{font-size:11.5px} .bbody th,.bbody td{padding:6px 7px} }
+
+  footer{margin:22px 0 8px;font-size:11.5px;color:#6d8299;line-height:1.6;text-align:center}
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#1d2a3a;border:1px solid #31465c;
+    color:#e8eef7;padding:10px 16px;border-radius:12px;font-size:13px;box-shadow:0 10px 30px -10px rgba(0,0,0,.8);
+    opacity:0;pointer-events:none;transition:.25s;z-index:50;max-width:90vw}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <div class="logo">台</div>
+      <div>
+        <h1>台股主力訊號監控</h1>
+        <p class="sub"><span class="dot" id="mktDot"></span><span id="mktText">載入中…</span><span>·</span><span id="lastUpd">—</span><span>·</span><span id="srcText">—</span></p>
+      </div>
+    </div>
+    <div class="topActions">
+      <button class="ghost" id="btnSettings">⚙ 參數</button>
+      <button class="ghost" id="btnRefresh">↻ 更新</button>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <form class="add" id="addForm">
+      <input type="text" id="codeInput" placeholder="輸入股票代號，例如 2330、6488、0050" autocomplete="off" inputmode="text" />
+      <button class="primary" type="submit">加入監控</button>
+    </form>
+    <div class="hint">
+      <span>刷新間隔
+        <select id="pollSel">
+          <option value="10">10 秒</option>
+          <option value="15">15 秒</option>
+          <option value="20" selected>20 秒</option>
+          <option value="30">30 秒</option>
+          <option value="60">60 秒</option>
+        </select>
+      </span>
+      <span>資料源：<b id="srcName">偵測中…</b></span>
+      <span>自選股存在<b>瀏覽器本機</b>，不會上傳</span>
+    </div>
+  </div>
+
+  <div class="summary" id="summary"></div>
+
+  <details class="basisbox">
+    <summary>ⓘ 計算依據：當沖方向與三個價位是怎麼算出來的？</summary>
+    <div class="bbody">
+      <b>一、方向怎麼決定</b><br>
+      直接採用原版 12 條規則的加權判讀結果（綜合分數 −2 ~ +2）：<br>
+      · 綜合分數 ≥ +1.0 → <b style="color:#ff5c5e">做多</b>（強多）；≥ +0.35 → <b style="color:#ff5c5e">做多</b>（偏多）<br>
+      · 綜合分數 ≤ −1.0 → <b style="color:#22d6a0">做空</b>（強空）；≤ −0.35 → <b style="color:#22d6a0">做空</b>（偏空）<br>
+      · 落在 −0.35 ~ +0.35 → <b>觀望</b>，不給價位，改列出「要等什麼條件」<br>
+      即使分數達標，以下任一情況仍會降為觀望或暫不建議：信心度低、多空訊號矛盾、價格與 VWAP 位於反側、距漲跌停不到 1%。
+
+      <b>二、三個價位怎麼算</b>
+      <table>
+        <thead><tr><th style="width:15%">項目</th><th>公式</th><th style="width:30%">為什麼這樣算</th></tr></thead>
+        <tbody>
+          <tr><td><b>波動單位</b></td><td><code>ATR = max(今日最高 − 今日最低, 現價 × 0.6%)</code></td><td>用當日振幅當基準；下限 0.6% 避免開盤振幅過小導致停損過窄</td></tr>
+          <tr><td><b>做多進場</b></td><td><code>下緣 = max(現價 − 0.40×ATR, VWAP − 0.10×ATR)</code><br><code>上緣 = 現價 + 0.05×ATR</code>（強多時 +0.15）</td><td>不追高，掛在回測區間；下限鎖在 VWAP 附近，跌破 VWAP 就不該做多</td></tr>
+          <tr><td><b>做空進場</b></td><td><code>上緣 = min(現價 + 0.40×ATR, VWAP + 0.10×ATR)</code><br><code>下緣 = 現價 − 0.05×ATR</code>（強空時 −0.15）</td><td>反彈到 VWAP 附近再空，不追殺</td></tr>
+          <tr><td><b>停損</b></td><td>做多 <code>min(進場下緣 − 0.50×ATR, VWAP − 0.25×ATR)</code><br>做空 <code>max(進場上緣 + 0.50×ATR, VWAP + 0.25×ATR)</code><br>再限制在進場價 <b>0.4% ~ 1.5%</b> 之內</td><td>0.4% 以下太容易被雜訊掃出場；1.5% 以上單筆風險過大，不符當沖紀律</td></tr>
+          <tr><td><b>目標 1 / 2</b></td><td><code>目標 1 = 進場價 + 1.5R</code><br><code>目標 2 = 進場價 + 2.5R</code><br><code>R = |進場價 − 停損|</code></td><td>固定風險報酬比 1:1.5 與 1:2.5，先落袋一半再讓獲利奔跑</td></tr>
+          <tr><td><b>R:R 起算價</b></td><td>做多以區間<b>上緣</b>、做空以區間<b>下緣</b>起算</td><td>用「較差成交價」計算，寧可保守估</td></tr>
+          <tr><td><b>跳動檔位</b></td><td><code>&lt;10: 0.01 / 10–50: 0.05 / 50–100: 0.1 / 100–500: 0.5 / 500–1000: 1 / ≥1000: 5</code></td><td>台股升降單位，價位一律對齊，避免掛出不存在的價格</td></tr>
+        </tbody>
+      </table>
+
+      <b>三、什麼情況會顯示「暫不建議進場」</b><br>
+      · 開盤未滿 15 分鐘（VWAP 未穩定，沿用原版門檻）　· 取樣不足 3 筆　· 成交量低於 20 日均量 15%（流動性不足）<br>
+      · 漲停／跌停鎖住　· 尚未取得成交價<br>
+      <span style="color:#7e94ab">若目前非盤中時段，仍會算出價位，但會標註「以今日最後成交資料計算，下個交易日須重新評估」。</span>
+    </div>
+  </details>
+
+  <h2 class="sec">個股當沖決策 <span class="cnt" id="cardCnt"></span></h2>
+  <div class="cards" id="cards"></div>
+
+  <h2 class="sec">今日主力訊號 <span class="cnt" id="sigCnt"></span></h2>
+  <div class="timeline" id="timeline"><div class="empty">尚無訊號。盤中觸發時會即時列在這裡。</div></div>
+
+  <h2 class="sec">原版 12 條規則 · 網頁版支援對照</h2>
+  <div class="rules">
+    <table class="rtable">
+      <thead><tr><th style="width:32%">規則（原版 ID）</th><th style="width:15%">網頁版</th><th>說明</th></tr></thead>
+      <tbody id="rulesBody"></tbody>
+    </table>
+  </div>
+
+  <div class="notice" id="noticeBox">
+    <b>ℹ️ 兩種資料模式（自動切換）</b><br>
+    <b>① 代理模式（完整）</b>：若你已啟動後端代理（<code>proxy.py</code>），本頁會自動接上，取得證交所 MIS 的<b>五檔委買委賣、內外盤、漲跌停</b>，
+    原版 B 方案 5 條技術面訊號（含五檔失衡、內外盤比、大單方向）<b>全部可算</b>。<br>
+    <b>② 純前端模式（降級）</b>：未接代理時，改用鉅亨網公開報價（CORS 開放），但該源<b>沒有五檔與買賣價</b>，
+    因此 <b>內外盤比、五檔失衡、大單方向</b> 三條會標示「資料不可用」並從加權分母移除（與原版處理缺失資料的方式一致，<b>不補 0 假裝中性</b>）。<br>
+    <span style="color:#8a7a52">※ 證交所 MIS 端點本身<b>沒有回傳 CORS 標頭</b>，瀏覽器直接呼叫會被擋（實測 <code>TypeError: Failed to fetch</code>），所以必須靠代理繞過。</span>
+  </div>
+
+  <div class="settings" id="settingsPanel">
+    <h2 class="sec" style="margin-top:0">可調參數（沿用原版 settings.yaml 預設值）</h2>
+    <div class="sgrid" id="sgrid"></div>
+    <div class="sactions">
+      <button class="primary" id="btnSaveSet">儲存參數</button>
+      <button class="ghost" id="btnResetSet">回復原版預設</button>
+    </div>
+  </div>
+
+  <footer>
+    本頁為<b>規則式判讀</b>，不是預測、也不構成投資建議。所有門檻皆為原版 settings.yaml 的預設值，未經回測。<br>
+    資料延遲約 10–20 秒，僅供盤中觀察參考。請自行驗證並為投資決策負責。
+  </footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* =========================================================================
+   台股主力訊號監控 — 純網頁版
+   忠實移植原 twstock-monitor：
+     · run_b.py 的 StockState / detect_triggers / build_intraday_ctx / 冷卻
+     · engines/rules.py 的 5 條技術面規則 + combine_rules 加權判讀引擎
+   門檻值一律沿用原版 config/settings.yaml 的預設值。
+   ========================================================================= */
+
+/* ---------- 原版預設參數（settings.yaml） ---------- */
+const DEFAULTS = {
+  poll: 20,
+  proxyUrl: "http://127.0.0.1:8787",
+  dataMode: "auto",   // auto | proxy | cnyes
+  // thresholds.intraday
+  vwapBand: 0.15, vwapPersist: 15,
+  tapeStreak: 5, tapeRatio: 0.65,
+  bigLots: 100, bigValue: 5000000,
+  breakoutWin: 5, breakoutRatio: 3.0,
+  bookRatio: 2.0,
+  // thresholds.price_trigger
+  changeAlert: 5.0, breakoutBuffer: 0.3,
+  // thresholds.price_volume（量價關係，原版 A 方案規則，網頁版盤中可算）
+  volSurge: 2.0, volQuiet: 0.7, bigMove: 2.0, upperShadow: 0.5, posHigh: 0.7, posLow: 0.3,
+  // weights
+  wVwap: 1.4, wTape: 1.2, wBigOrder: 1.3, wBreakout: 1.4, wBook: 0.8, wPriceVolume: 1.3,
+  // levels
+  strongBull: 1.0, mildBull: 0.35, mildBear: -0.35, strongBear: -1.0,
+  // contradiction
+  contraStrong: 0.75, contraShare: 0.25, contraSuppress: 0.6,
+  // confidence
+  highCov: 0.70, lowCov: 0.40, highAgree: 0.70, highMinScore: 0.60,
+  // alert
+  alertMinAbs: 1.5,
+  // monitor_b.cooldown_sec
+  cdBigOrder: 300, cdTape: 600, cdBreakout: 600, cdBook: 900, cdPrice: 1800,
+  // monitor_b
+  maxPerCycle: 3, maxPerStock: 12, stopBeforeClose: 5
+};
+
+const DEFAULT_WATCH = [
+  {code:"2330", name:"台積電"},
+  {code:"2317", name:"鴻海"},
+  {code:"2454", name:"聯發科"},
+  {code:"6488", name:"環球晶"}
+];
+
+/* ---------- 儲存 ---------- */
+const LS = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+let settings = Object.assign({}, DEFAULTS, LS.get("twstock_settings", {}));
+let watch = LS.get("twstock_watch", DEFAULT_WATCH.slice());
+let avgCache = LS.get("twstock_avg", {});
+
+/* ---------- 狀態 ---------- */
+const stocks = {};
+let signals = [];
+let timer = null;
+let lastFetchOk = 0;
+
+function newState(code, name){
+  return { code, name, samples:[], open:null, high:0, low:1e18, prevClose:null,
+           bigBuy:0, bigSell:0, bigBuyVal:0, bigSellVal:0,
+           tapeForeign:0, tapeDomestic:0,
+           cooldown:{}, alertCount:0,
+           lastPrice:null, lastChgPct:null, lastVol:null, lastTime:"",
+           limitUp:0, limitDown:0, avg20:null, avg20State:"pending", verdict:null, daytrade:null,
+           hasBook:false, bidTotal:0, askTotal:0, bookRatio:null, atLimit:false,
+           askPrices:[], askVols:[], bidPrices:[], bidVols:[] };
+}
+
+/* ---------- 工具 ---------- */
+const $ = s => document.querySelector(s);
+function fmt(n, d){ if(n===null||n===undefined||isNaN(n)) return "—";
+  return Number(n).toLocaleString("zh-TW",{minimumFractionDigits:d===undefined?2:d, maximumFractionDigits:d===undefined?2:d}); }
+function fmtInt(n){ if(n===null||n===undefined||isNaN(n)) return "—"; return Math.round(n).toLocaleString("zh-TW"); }
+function pct(n){ if(n===null||n===undefined||isNaN(n)) return "—"; return (n>=0?"+":"")+n.toFixed(2)+"%"; }
+function signed(n){ return (n>=0?"+":"")+n.toFixed(2); }
+function cls(n){ return n>0?"up":(n<0?"down":"flat"); }
+function hhmmss(d){ const p=x=>String(x).padStart(2,"0"); return p(d.getHours())+":"+p(d.getMinutes())+":"+p(d.getSeconds()); }
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove("show"),2200); }
+
+function tpeNow(){ const d=new Date(); return new Date(d.getTime() + (d.getTimezoneOffset()*60000) + 8*3600000); }
+function isTradingDay(d){ const w=d.getDay(); return w>=1 && w<=5; }
+function marketStatus(){
+  const d=tpeNow();
+  if(!isTradingDay(d)) return {live:false, text:"非交易日（週末）"};
+  const m=d.getHours()*60+d.getMinutes();
+  if(m < 9*60) return {live:false, text:"未開盤（09:00 開盤）"};
+  if(m > 13*60+30) return {live:false, text:"已收盤"};
+  if(m > 13*60+30-settings.stopBeforeClose) return {live:true, text:"接近收盤（原版此時停止監控）"};
+  return {live:true, text:"盤中交易中"};
+}
+
+/* =========================================================================
+   資料源：鉅亨網公開報價（實測 CORS: access-control-allow-origin: *）
+   欄位對照（已與證交所 STOCK_DAY 官方日線交叉驗證）：
+     6=成交價 11=漲跌 56=漲跌幅% 19=開盤 12=最高 13=最低 21=昨收
+     200013=累計成交量(張) 75=漲停 76=跌停 200009=名稱 200010=代號 200007=時間戳(秒)
+   ========================================================================= */
+function num(v){ const n = parseFloat(v); return isNaN(n)?0:n; }
+
+let dataSource = "cnyes";   // 目前實際使用的資料源：proxy | cnyes
+
+/* 代理模式：伺服器端抓 MIS（含五檔），前端只跟代理要 JSON */
+async function fetchQuotesProxy(codes){
+  const base = String(settings.proxyUrl||"").replace(/\/+$/,"");
+  const url = base + "/api/quote?codes=" + encodeURIComponent(codes.join(","));
+  const r = await fetch(url, {cache:"no-store"});
+  if(!r.ok) throw new Error("proxy HTTP "+r.status);
+  const j = await r.json();
+  if(!j.ok) throw new Error(j.error||"proxy error");
+  const out = {};
+  Object.values(j.quotes||{}).forEach(o=>{
+    out[o.code] = {
+      code:o.code, name:o.name, price:o.price,
+      change:o.price-o.prevClose,
+      chgPct: o.prevClose>0 ? (o.price-o.prevClose)/o.prevClose*100 : 0,
+      open:o.open, high:o.high, low:o.low, prevClose:o.prevClose, vol:o.volumeLots,
+      limitUp:o.limitUp, limitDown:o.limitDown, ts:0,
+      askPrices:o.askPrices||[], askVols:o.askVols||[],
+      bidPrices:o.bidPrices||[], bidVols:o.bidVols||[],
+      bidTotal:o.bidTotal||0, askTotal:o.askTotal||0, hasBook:true
+    };
+  });
+  return out;
+}
+
+async function fetchQuotesCnyes(codes){
+  if(!codes.length) return {};
+  const syms = codes.map(c=>"TWS:"+c+":STOCK").join(",");
+  const url = "https://ws.api.cnyes.com/ws/api/v1/quote/quotes/"+syms;
+  const r = await fetch(url, {cache:"no-store"});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  const j = await r.json();
+  const out = {};
+  (j.data||[]).forEach(o=>{
+    const code = String(o["200010"]||"").trim();
+    if(!code) return;
+    out[code] = {
+      code, name: String(o["200009"]||"").trim(),
+      price: num(o["6"]), change: num(o["11"]), chgPct: num(o["56"]),
+      open: num(o["19"]), high: num(o["12"]), low: num(o["13"]), prevClose: num(o["21"]),
+      vol: num(o["200013"]), limitUp: num(o["75"]), limitDown: num(o["76"]),
+      ts: num(o["200007"]),
+      hasBook:false, askPrices:[], askVols:[], bidPrices:[], bidVols:[], bidTotal:0, askTotal:0
+    };
+  });
+  return out;
+}
+
+/* 資料源調度：auto 先試代理，失敗才退回鉅亨（並標示訊號不可用） */
+async function fetchQuotes(codes){
+  if(!codes.length) return {};
+  const mode = settings.dataMode || "auto";
+  if(mode === "proxy" || mode === "auto"){
+    try{
+      const q = await fetchQuotesProxy(codes);
+      if(Object.keys(q).length){ dataSource = "proxy"; return q; }
+    }catch(e){
+      if(mode === "proxy") throw e;
+    }
+  }
+  const q = await fetchQuotesCnyes(codes);
+  dataSource = "cnyes";
+  return q;
+}
+
+/* 20 日均量：證交所 STOCK_DAY（上個月約 20 個交易日）。上櫃股回空 → 標示「—」 */
+async function fetchAvg20(code){
+  const d = tpeNow();
+  const prevMonth = new Date(d.getFullYear(), d.getMonth()-1, 1);
+  const ym = prevMonth.getFullYear()+"-"+String(prevMonth.getMonth()+1).padStart(2,"0");
+  const key = code+"@"+ym;
+  if(avgCache[key] !== undefined) return avgCache[key];
+  const dateStr = prevMonth.getFullYear()+String(prevMonth.getMonth()+1).padStart(2,"0")+"01";
+  const url = "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date="+dateStr+"&stockNo="+code+"&response=json";
+  try{
+    const r = await fetch(url, {cache:"no-store"});
+    const j = await r.json();
+    if(j.stat !== "OK" || !j.data || !j.data.length){ avgCache[key]=null; LS.set("twstock_avg",avgCache); return null; }
+    const idx = {}; (j.fields||[]).forEach((f,i)=>idx[f]=i);
+    const vi = idx["成交股數"];
+    const vols = j.data.map(row=>parseFloat(String(row[vi]).replace(/,/g,""))/1000).filter(v=>!isNaN(v)&&v>0);
+    const last20 = vols.slice(-20);
+    const avg = last20.length ? last20.reduce((a,b)=>a+b,0)/last20.length : null;
+    avgCache[key]=avg; LS.set("twstock_avg",avgCache);
+    return avg;
+  }catch(e){ return null; }
+}
+
+/* =========================================================================
+   引擎：StockState（移植 run_b.py）
+   ========================================================================= */
+function addSample(st, q){
+  const prev = st.samples.length ? st.samples[st.samples.length-1] : null;
+  // ★ 第一筆取樣是基準點，增量必須視為 0（原版踩過的坑：首輪誤報大單、內外盤 100%）
+  const dv = prev ? Math.max(q.vol - prev.vol, 0) : 0;
+  const value = dv * 1000 * q.price;
+  const big = dv >= settings.bigLots || value >= settings.bigValue;
+
+  if(st.open === null){ st.open = q.open || q.price; st.prevClose = q.prevClose; }
+  st.high = Math.max(st.high, q.high || q.price);
+  st.low  = Math.min(st.low,  q.low  || q.price);
+  st.limitUp = q.limitUp; st.limitDown = q.limitDown;
+
+  // 內外盤：以「成交價 vs 賣一/買一」判定（需五檔；代理模式才有）
+  // 原版為逐筆判定；網頁版為定時取樣，故加上標準 tick rule 近似（價漲→外盤、價跌→內盤），
+  // 並在 README 明確標示此近似。無五檔時 side 保持 null（不猜）。
+  let side = null;
+  if(dv > 0 && q.hasBook){
+    const a1 = (q.askPrices && q.askPrices.length) ? q.askPrices[0] : null;
+    const b1 = (q.bidPrices && q.bidPrices.length) ? q.bidPrices[0] : null;
+    if(a1 !== null && q.price >= a1-1e-9) side = "foreign";
+    else if(b1 !== null && q.price <= b1+1e-9) side = "domestic";
+    else if(st.lastPrice !== null && q.price > st.lastPrice) side = "foreign";   // tick rule
+    else if(st.lastPrice !== null && q.price < st.lastPrice) side = "domestic";  // tick rule
+  }
+  if(dv > 0){
+    st.tapeForeign += side === "foreign" ? dv : 0;
+    st.tapeDomestic += side === "domestic" ? dv : 0;
+  }
+  if(big && side === "foreign"){ st.bigBuy++; st.bigBuyVal += value; }
+  else if(big && side === "domestic"){ st.bigSell++; st.bigSellVal += value; }
+  // 五檔快照
+  st.hasBook = !!q.hasBook;
+  st.bidTotal = q.bidTotal||0; st.askTotal = q.askTotal||0;
+  st.bookRatio = (q.askTotal>0) ? (q.bidTotal/q.askTotal) : null;
+  st.atLimit = (q.limitUp>0 && Math.abs(q.price-q.limitUp)<1e-6) || (q.limitDown>0 && Math.abs(q.price-q.limitDown)<1e-6);
+  st.askPrices = q.askPrices||[]; st.askVols = q.askVols||[];
+  st.bidPrices = q.bidPrices||[]; st.bidVols = q.bidVols||[];
+
+  const s = { ts: Date.now(), t: q.time || hhmmss(tpeNow()), price: q.price, vol: q.vol, dv, value, side, big };
+  st.samples.push(s);
+  if(st.samples.length > 3000) st.samples.shift();
+  return s;
+}
+
+function vwapOf(st){
+  if(st.samples.length < 2) return st.samples.length ? st.samples[0].price : null;
+  const arr = st.samples.slice(1);
+  const tot = arr.reduce((a,s)=>a+s.dv, 0);
+  if(tot <= 0) return st.samples[0].price;
+  return arr.reduce((a,s)=>a+s.dv*s.price, 0) / tot;
+}
+function minutesElapsed(st){
+  if(st.samples.length < 2) return 0;
+  return Math.floor((st.samples[st.samples.length-1].ts - st.samples[0].ts)/60000);
+}
+function intervalMin(st){
+  if(st.samples.length < 2) return 1.0;
+  let span = 0;
+  for(let i=0;i<st.samples.length-1;i++) span += st.samples[i+1].ts - st.samples[i].ts;
+  return Math.max((span/(st.samples.length-1))/60000, 0.01);
+}
+function minutesOnSide(st){
+  const vw = vwapOf(st);
+  if(!vw || st.samples.length < 2) return [0,0];
+  let above=0, below=0;
+  for(let i=st.samples.length-1;i>=1;i--){
+    const p = st.samples[i].price;
+    if(p >= vw){ if(below) break; above++; } else { if(above) break; below++; }
+  }
+  const iv = intervalMin(st);
+  return [Math.floor(above*iv), Math.floor(below*iv)];
+}
+function tapeForeignRatio(st){
+  const total = st.tapeForeign + st.tapeDomestic;
+  if(total <= 0) return null;
+  return st.tapeForeign / total;
+}
+function recentVolumeRatio(st, winMin){
+  if(st.samples.length < 3) return null;
+  const now = st.samples[st.samples.length-1].ts;
+  const cut = now - winMin*60000;
+  const recent = st.samples.filter(s=>s.ts>=cut).reduce((a,s)=>a+s.dv,0);
+  const older = st.samples.filter(s=>s.ts<cut);
+  if(!older.length) return null;
+  const spanMin = Math.max((older[older.length-1].ts - older[0].ts)/60000, 1);
+  const olderRate = older.reduce((a,s)=>a+s.dv,0)/spanMin;
+  if(olderRate <= 0) return null;
+  return (recent/winMin)/olderRate;
+}
+
+/* ---------- 觸發偵測（移植 run_b.py detect_triggers） ---------- */
+function detectTriggers(st, q, sample){
+  const out = [];
+  // 1. 大單（量能門檻；代理模式可判定方向）
+  if(sample.big && sample.dv > 0){
+    const dirTxt = sample.side === "foreign" ? "外盤（主動買）" : (sample.side === "domestic" ? "內盤（主動賣）" : "方向無法判定（需買賣價）");
+    out.push({ kind:"big_order", cd:settings.cdBigOrder, severity:"normal",
+      reason:`大單敲進：本次成交增量 ${fmtInt(sample.dv)} 張（${fmt(sample.value/1e4,0)} 萬），達門檻 ${settings.bigLots} 張或 ${fmt(settings.bigValue/1e4,0)} 萬。${dirTxt}。` });
+  }
+  // 2. 內外盤失衡（需五檔；代理模式才有）
+  const ratio = tapeForeignRatio(st);
+  if(ratio !== null && st.samples.length >= 5){
+    if(ratio >= settings.tapeRatio || ratio <= (1-settings.tapeRatio)){
+      const side = ratio >= settings.tapeRatio ? "外盤" : "內盤";
+      const pctv = ratio >= settings.tapeRatio ? ratio : (1-ratio);
+      out.push({ kind:"tape", cd:settings.cdTape, severity:"normal",
+        reason:`內外盤失衡：${side}占 ${(pctv*100).toFixed(0)}%（門檻 ${(settings.tapeRatio*100).toFixed(0)}%），累計外盤 ${fmtInt(st.tapeForeign)} 張 / 內盤 ${fmtInt(st.tapeDomestic)} 張。` });
+    }
+  }
+  // 3. 爆量突破
+  const vr = recentVolumeRatio(st, settings.breakoutWin);
+  if(vr !== null && vr >= settings.breakoutRatio){
+    const isHigh = q.high>0 && q.price >= q.high*(1-1e-9) && q.high > (st.open||q.high);
+    const isLow  = q.low>0  && q.price <= q.low*(1+1e-9)  && q.low  < (st.open||q.low);
+    const dir = isHigh ? "創當日新高" : (isLow ? "創當日新低" : "未創新高/低");
+    out.push({ kind:"breakout", cd:settings.cdBreakout, severity:(isHigh||isLow)?"alert":"normal",
+      reason:`爆量突破：近 ${settings.breakoutWin} 分鐘量為先前均量的 ${vr.toFixed(1)} 倍（門檻 ${settings.breakoutRatio.toFixed(1)} 倍），${dir}。` });
+  }
+  // 4. 五檔失衡（需五檔；代理模式才有）
+  if(st.hasBook && !st.atLimit && st.askTotal > 0){
+    const br = st.bidTotal / st.askTotal;
+    if(br >= settings.bookRatio || br <= (1/settings.bookRatio)){
+      const side = br >= settings.bookRatio ? "委買" : "委賣";
+      const show = br >= settings.bookRatio ? br : 1/br;
+      out.push({ kind:"book", cd:settings.cdBook, severity:"normal",
+        reason:`五檔失衡：${side}量為對側的 ${show.toFixed(1)} 倍（門檻 ${settings.bookRatio.toFixed(1)} 倍）。` });
+    }
+  }
+  // 5. 價格觸發
+  if(q.prevClose>0){
+    const chg = (q.price-q.prevClose)/q.prevClose*100;
+    if(Math.abs(chg) >= settings.changeAlert){
+      out.push({ kind:"price", cd:settings.cdPrice, severity:"alert",
+        reason:`漲跌幅達 ${signed(chg)}%（門檻 ±${settings.changeAlert.toFixed(1)}%），現價 ${fmt(q.price)}、昨收 ${fmt(q.prevClose)}。` });
+    }
+  }
+  // 6. 漲跌停
+  if(q.limitUp>0 && Math.abs(q.price-q.limitUp)<1e-6){
+    out.push({ kind:"limit", cd:settings.cdPrice, severity:"alert", reason:`觸及漲停 ${fmt(q.limitUp)}。` });
+  } else if(q.limitDown>0 && Math.abs(q.price-q.limitDown)<1e-6){
+    out.push({ kind:"limit", cd:settings.cdPrice, severity:"alert", reason:`觸及跌停 ${fmt(q.limitDown)}。` });
+  }
+  return out;
+}
+
+function cooldownOk(st, kind, cdSec){
+  const now = Date.now();
+  const last = st.cooldown[kind] || 0;
+  if(now - last < cdSec*1000) return false;
+  st.cooldown[kind] = now;
+  return true;
+}
+
+/* =========================================================================
+   判讀引擎：5 條技術面規則（移植 rules.py）+ combine_rules 加權
+   每條規則回傳 {id,name,weight,score,short,detail,severity,unavailable}
+   score=null 表示資料不可用（從加權分母移除，不補 0）
+   ========================================================================= */
+function ruleVwap(ctx){
+  const band = settings.vwapBand, persist = settings.vwapPersist;
+  const vw = ctx.vwap, price = ctx.price;
+  const above = ctx.minutesAbove, below = ctx.minutesBelow, elapsed = ctx.minutesElapsed;
+  if(!vw || vw<=0 || !price) return {id:"tech_vwap",name:"價格相對 VWAP",weight:settings.wVwap,score:null,unavailable:"VWAP 需累積盤中取樣才能計算（剛開盤或取樣不足）"};
+  if(elapsed < 15) return {id:"tech_vwap",name:"價格相對 VWAP",weight:settings.wVwap,score:null,unavailable:"開盤未滿 15 分鐘，VWAP 尚不穩定"};
+  const dev = (price-vw)/vw*100;
+  if(dev >= band){
+    const ok = above >= persist;
+    return {id:"tech_vwap",name:"價格相對 VWAP",weight:settings.wVwap,score: ok?2.0:0.8,severity:ok?"alert":"normal",
+      short:`站上 VWAP（${signed(dev)}%）`+(ok?` 已 ${above} 分`:""),
+      detail:`價格高於 VWAP ${signed(dev)}%，已持續 ${above} 分鐘（門檻 ${persist} 分）。`+(ok?"當日買方普遍獲利，持股意願較強。":"尚未站穩。")};
+  } else if(dev <= -band){
+    const ok = below >= persist;
+    return {id:"tech_vwap",name:"價格相對 VWAP",weight:settings.wVwap,score: ok?-2.0:-0.8,severity:ok?"alert":"normal",
+      short:`跌破 VWAP（${signed(dev)}%）`+(ok?` 已 ${below} 分`:""),
+      detail:`價格低於 VWAP ${signed(dev)}%，已持續 ${below} 分鐘（門檻 ${persist} 分）。`+(ok?"當日買方普遍套牢，反彈易遇賣壓。":"尚未站穩。")};
+  }
+  return {id:"tech_vwap",name:"價格相對 VWAP",weight:settings.wVwap,score:0.0,short:"貼近 VWAP",
+    detail:`價格 ${fmt(price)} 與 VWAP ${fmt(vw)} 差距僅 ${signed(dev)}%，多空未分。`};
+}
+
+function ruleTape(ctx){
+  const ratio = ctx.tapeForeignRatio;
+  if(ratio === null || ratio === undefined) return {id:"tech_tape",name:"內外盤比",weight:settings.wTape,score:null,
+    unavailable:"需「成交價 vs 買賣價」判定主動買賣；未接代理時取不到（MIS 被 CORS 擋、鉅亨無此欄位）"};
+  const thr = settings.tapeRatio;
+  const expanding = ctx.intradayVolumeRatio !== null && ctx.intradayVolumeRatio >= 1.3;
+  if(ratio >= thr){
+    return {id:"tech_tape",name:"內外盤比",weight:settings.wTape,score: expanding?1.5:1.0,
+      short:`外盤比 ${(ratio*100).toFixed(0)}%`+(expanding?"（量增）":""),
+      detail:`外盤占比 ${(ratio*100).toFixed(0)}%（門檻 ${(thr*100).toFixed(0)}%），買方主動追價`+(expanding?"，且成交量同步放大。":"，但量能未同步放大。")};
+  }
+  if(ratio <= (1-thr)){
+    return {id:"tech_tape",name:"內外盤比",weight:settings.wTape,score: expanding?-1.5:-1.0,
+      short:`內盤比 ${((1-ratio)*100).toFixed(0)}%`+(expanding?"（量增）":""),
+      detail:`內盤占比 ${((1-ratio)*100).toFixed(0)}%（門檻 ${((1-thr)*100).toFixed(0)}%），賣方主動殺出`+(expanding?"，且成交量同步放大。":"，但量能未同步放大。")};
+  }
+  return {id:"tech_tape",name:"內外盤比",weight:settings.wTape,score:0.0,short:"內外盤均衡",
+    detail:`外盤占比 ${(ratio*100).toFixed(0)}%，買賣力道相當。`};
+}
+
+function ruleBigOrder(ctx){
+  const buys = ctx.bigBuyCount, sells = ctx.bigSellCount;
+  if(buys === null || buys === undefined) return {id:"tech_big_order",name:"大單方向",weight:settings.wBigOrder,score:null,
+    unavailable:"需買賣價判定外盤/內盤方向；未接代理時只能偵測大單「量」、無法判定方向"};
+  const net = buys - sells;
+  const netVal = (ctx.bigBuyValue||0) - (ctx.bigSellValue||0);
+  const significant = Math.abs(netVal) >= settings.bigValue;
+  let score = 0.0;
+  if(net >= 3 && significant) score = 2.0;
+  else if(net >= 1) score = 1.0;
+  else if(net <= -3 && significant) score = -2.0;
+  else if(net <= -1) score = -1.0;
+  const side = net>0?"外盤":(net<0?"內盤":"中性");
+  return {id:"tech_big_order",name:"大單方向",weight:settings.wBigOrder,score,
+    short: net ? `大單${side} ${Math.abs(net)} 筆` : "無顯著大單",
+    detail:`偵測到大單：外盤 ${buys} 筆（${fmt((ctx.bigBuyValue||0)/1e4,0)} 萬）、內盤 ${sells} 筆（${fmt((ctx.bigSellValue||0)/1e4,0)} 萬），淨 ${net>=0?"+":""}${net} 筆（門檻：單筆 ≥ ${settings.bigLots} 張或 ${fmt(settings.bigValue/1e4,0)} 萬）。`};
+}
+
+function ruleBreakout(ctx){
+  const thr = settings.breakoutRatio;
+  const dir = ctx.breakoutDirection, vr = ctx.breakoutVolumeRatio, ref = ctx.breakoutRefPrice;
+  if(!dir) return {id:"tech_breakout",name:"突破量能",weight:settings.wBreakout,score:0.0,short:"未突破關鍵價",
+    detail:"價格未突破/跌破設定的關鍵價位，無突破訊號。"};
+  const enough = vr !== null && vr >= thr;
+  const ratioTxt = vr !== null ? vr.toFixed(1)+" 倍" : "資料不足";
+  if(dir === "up"){
+    return {id:"tech_breakout",name:"突破量能",weight:settings.wBreakout,score: enough?2.0:0.5,severity:enough?"alert":"normal",
+      short:"突破"+(vr?`（量 ${vr.toFixed(1)} 倍）`:""),
+      detail: enough ? `突破關鍵價 ${fmt(ref)}，且量能達 ${ratioTxt}，屬有效突破。`
+                     : `突破關鍵價 ${fmt(ref)}，但量能僅 ${ratioTxt}（門檻 ${thr.toFixed(1)} 倍），假突破風險高。`};
+  }
+  return {id:"tech_breakout",name:"突破量能",weight:settings.wBreakout,score: enough?-2.0:-0.5,severity:enough?"alert":"normal",
+    short:"跌破"+(vr?`（量 ${vr.toFixed(1)} 倍）`:""),
+    detail: enough ? `跌破關鍵價 ${fmt(ref)}，且量能達 ${ratioTxt}，屬有效跌破。`
+                   : `跌破關鍵價 ${fmt(ref)}，但量能僅 ${ratioTxt}，可能僅為短暫破線。`};
+}
+
+function ruleBook(ctx){
+  const ratio = ctx.bookRatio;
+  if(ctx.atLimit) return {id:"tech_book",name:"五檔失衡",weight:settings.wBook,score:null,
+    unavailable:"漲跌停鎖住，五檔只剩單邊掛單，無法判讀"};
+  if(ratio === null || ratio === undefined || ratio <= 0) return {id:"tech_book",name:"五檔失衡",weight:settings.wBook,score:null,
+    unavailable:"需五檔委買委賣量；未接代理時取不到（MIS 被 CORS 擋、鉅亨無此欄位）"};
+  const thr = settings.bookRatio;
+  if(ratio >= thr) return {id:"tech_book",name:"五檔失衡",weight:settings.wBook,score:1.0,
+    short:`委買委賣 ${ratio.toFixed(1)} 倍`,detail:`委買量為委賣量的 ${ratio.toFixed(1)} 倍，買盤掛單積極。（五檔掛單可隨時抽單，僅供參考）`};
+  if(ratio <= (1/thr)) return {id:"tech_book",name:"五檔失衡",weight:settings.wBook,score:-1.0,
+    short:`委賣委買 ${(1/ratio).toFixed(1)} 倍`,detail:`委賣量為委買量的 ${(1/ratio).toFixed(1)} 倍，賣壓掛單沉重。（五檔掛單可隨時抽單，僅供參考）`};
+  return {id:"tech_book",name:"五檔失衡",weight:settings.wBook,score:0.0,short:"五檔均衡",
+    detail:`委買/委賣比 ${ratio.toFixed(2)}，兩側掛單相當。`};
+}
+
+/* 量價關係（原版 A 方案規則，網頁版盤中可算）— 作為補充規則 */
+function rulePriceVolume(ctx){
+  const vol = ctx.volumeLots, avg20 = ctx.avg20, chg = ctx.chgPct;
+  if(!vol || !avg20 || avg20<=0 || chg===null) return {id:"chip_price_volume",name:"量價關係",weight:settings.wPriceVolume,score:null,unavailable:"缺少成交量或 20 日均量（上櫃股無日線）"};
+  const vr = vol/avg20;
+  const surge = vr >= settings.volSurge, quiet = vr <= settings.volQuiet;
+  const up = chg >= settings.bigMove, down = chg <= -settings.bigMove;
+  const rng = ctx.high - ctx.low;
+  const cp = rng>0 ? (ctx.price-ctx.low)/rng : 0.5;
+  const upper = rng>0 ? (ctx.high-ctx.price)/rng : 0;
+  const longUpper = upper >= settings.upperShadow;
+  if(surge && longUpper && cp <= settings.posLow)
+    return {id:"chip_price_volume",name:"量價關係",weight:settings.wPriceVolume,score:-1.5,severity:"alert",
+      short:`爆量長上影（上影 ${(upper*100).toFixed(0)}%）`,
+      detail:`爆量 ${vr.toFixed(1)} 倍，但盤中高點回落、收在當日 ${(cp*100).toFixed(0)}% 位置，上影線佔振幅 ${(upper*100).toFixed(0)}%，屬出貨型態。`};
+  if(surge && up && cp >= settings.posHigh)
+    return {id:"chip_price_volume",name:"量價關係",weight:settings.wPriceVolume,score:2.0,
+      short:`爆量長紅（量 ${vr.toFixed(1)} 倍）`,detail:"成交量放大且收在當日高檔，屬攻擊性量價結構。"};
+  if(surge && down)
+    return {id:"chip_price_volume",name:"量價關係",weight:settings.wPriceVolume,score:-2.0,severity:"alert",
+      short:`爆量長黑（量 ${vr.toFixed(1)} 倍）`,detail:"成交量放大且重挫，屬恐慌性賣壓。"};
+  if(surge)
+    return {id:"chip_price_volume",name:"量價關係",weight:settings.wPriceVolume,score:-0.5,
+      short:`爆量但無方向（量 ${vr.toFixed(1)} 倍）`,detail:"成交量放大但漲跌幅不大，多空交戰激烈。"};
+  if(quiet && up)
+    return {id:"chip_price_volume",name:"量價關係",weight:settings.wPriceVolume,score:0.5,
+      short:"價漲量縮（漲勢不實）",detail:"股價上漲但成交量萎縮，追價意願不足，漲勢持續性存疑。"};
+  if(quiet && down)
+    return {id:"chip_price_volume",name:"量價關係",weight:settings.wPriceVolume,score:-0.3,
+      short:"價跌量縮（賣壓減弱）",detail:"股價下跌但成交量萎縮，賣壓有減弱跡象。"};
+  if(quiet)
+    return {id:"chip_price_volume",name:"量價關係",weight:settings.wPriceVolume,score:0.0,short:"量縮整理",detail:"成交量低於均量，屬整理格局。"};
+  return {id:"chip_price_volume",name:"量價關係",weight:settings.wPriceVolume,score:0.0,short:"量價平穩",detail:"成交量與漲跌幅皆在常態區間。"};
+}
+
+/* combine_rules（移植 rules.py） */
+function combineRules(results, code, name, asOf){
+  const available = results.filter(r=>r.score !== null);
+  const totalW = available.reduce((a,r)=>a+r.weight,0);
+  const totalWAll = results.reduce((a,r)=>a+r.weight,0);
+  const score = totalW>0 ? available.reduce((a,r)=>a+r.score*r.weight,0)/totalW : 0.0;
+
+  // 矛盾偵測
+  const posW = available.filter(r=>r.score>=settings.contraStrong).reduce((a,r)=>a+r.weight,0);
+  const negW = available.filter(r=>r.score<=-settings.contraStrong).reduce((a,r)=>a+r.weight,0);
+  const posShare = totalW>0 ? posW/totalW : 0, negShare = totalW>0 ? negW/totalW : 0;
+  const contradictions = [];
+  const contradictory = posShare >= settings.contraShare && negShare >= settings.contraShare;
+  if(contradictory){
+    const pn = available.filter(r=>r.score>=settings.contraStrong).map(r=>r.name);
+    const nn = available.filter(r=>r.score<=-settings.contraStrong).map(r=>r.name);
+    contradictions.push(`多方訊號（${pn.join("、")}）與空方訊號（${nn.join("、")}）同時成立`);
+  }
+
+  // 分級
+  let level;
+  if(contradictory && Math.abs(score) < settings.contraSuppress) level = "neutral";
+  else if(score >= settings.strongBull) level = "strong_bull";
+  else if(score >= settings.mildBull) level = "mild_bull";
+  else if(score <= settings.strongBear) level = "strong_bear";
+  else if(score <= settings.mildBear) level = "mild_bear";
+  else level = "neutral";
+
+  // 信心度
+  const coverage = totalWAll>0 ? totalW/totalWAll : 0;
+  let agreement = 0;
+  if(totalW>0 && Math.abs(score)>0.01){
+    agreement = available.filter(r=>r.score*score>0).reduce((a,r)=>a+r.weight,0)/totalW;
+  }
+  const confReasons = [];
+  let confidence;
+  if(coverage>=settings.highCov && agreement>=settings.highAgree && Math.abs(score)>=settings.highMinScore){
+    confidence="高"; confReasons.push(`資料覆蓋 ${(coverage*100).toFixed(0)}%、方向一致度 ${(agreement*100).toFixed(0)}%、總分強度 ${Math.abs(score).toFixed(2)}`);
+  } else if(coverage<settings.lowCov || agreement<0.5 || contradictory){
+    confidence="低";
+    if(coverage<settings.lowCov) confReasons.push(`資料覆蓋僅 ${(coverage*100).toFixed(0)}%，多條規則無法計算`);
+    if(agreement<0.5) confReasons.push(`方向一致度僅 ${(agreement*100).toFixed(0)}%，訊號分歧`);
+    if(contradictory) confReasons.push("多空訊號互相矛盾");
+  } else {
+    confidence="中"; confReasons.push(`資料覆蓋 ${(coverage*100).toFixed(0)}%、方向一致度 ${(agreement*100).toFixed(0)}%，訊號方向一致但強度或完整度普通`);
+  }
+
+  // 警示
+  const alertRules = available.filter(r=>r.severity==="alert" && Math.abs(r.score)>=settings.alertMinAbs);
+  let isAlert = alertRules.length>0;
+  if(isAlert){
+    confReasons.push("含警示級訊號："+alertRules.map(r=>r.short||r.name).join("、"));
+    if(confidence==="高") confidence="中";
+    const alertNeg = alertRules.filter(r=>r.score<0), alertPos = alertRules.filter(r=>r.score>0);
+    if(alertNeg.length && (level==="strong_bull"||level==="mild_bull")){
+      level="neutral";
+      contradictions.push("籌碼面偏多，但出現空方警示（"+alertNeg.map(r=>r.short||r.name).join("、")+"），價格與籌碼方向相背");
+    }
+    if(alertPos.length && (level==="strong_bear"||level==="mild_bear")){
+      level="neutral";
+      contradictions.push("籌碼面偏空，但出現多方警示（"+alertPos.map(r=>r.short||r.name).join("、")+"）");
+    }
+  }
+
+  const missing = results.filter(r=>r.score===null && r.unavailable).map(r=>`${r.name}：${r.unavailable}`);
+  const headline = buildHeadline(level, available.filter(r=>Math.abs(r.score)>0.01), isAlert, contradictory, alertRules);
+
+  return { code, name, asOf, level, score: Math.round(score*1000)/1000, headline,
+           confidence, confidenceReason: confReasons.join("；"), rules: results,
+           contradictions, missing, isAlert };
+}
+
+const LEVEL_ICON = { strong_bull:"🟢🟢", mild_bull:"🟢", neutral:"⚪", mild_bear:"🔴", strong_bear:"🔴🔴" };
+const LEVEL_TEXT = { strong_bull:"強多", mild_bull:"偏多", neutral:"中性觀望", mild_bear:"偏空", strong_bear:"強空" };
+
+function buildHeadline(level, rules, isAlert, contradictory, alertRules){
+  if(contradictory && level==="neutral"){
+    let label = `${LEVEL_ICON.neutral} 中性觀望（訊號矛盾）`;
+    if(isAlert) label = `⚠️ 警示｜${label}`;
+    return `${label}｜訊號互相矛盾，建議等確認`;
+  }
+  let label = `${LEVEL_ICON[level]} ${LEVEL_TEXT[level]}`;
+  if(isAlert){
+    label = `⚠️ 警示｜${LEVEL_TEXT[level]}`;
+    const picks = [...alertRules.map(r=>r.short), ...rules.map(r=>r.short)].filter(Boolean).slice(0,3);
+    return picks.length ? `${label}｜${picks.join("、")}` : label;
+  }
+  const picks = rules.map(r=>r.short).filter(Boolean).slice(0,3);
+  return picks.length ? `${label}｜${picks.join("、")}` : label;
+}
+
+/* =========================================================================
+   當沖決策引擎
+   方向沿用原版加權判讀（level → 做多/做空/觀望），價位以當日振幅（ATR）為基準：
+     進場 = 現價回測區間（做多鎖在 VWAP 之上、做空鎖在 VWAP 之下）
+     停損 = max(區間外 0.5×ATR, VWAP 外 0.25×ATR)，再限制在 0.4%~1.5%
+     目標 = 進場 + 1.5R / 2.5R（R = |進場 − 停損|）
+   ========================================================================= */
+const DT = {
+  atrFloorPct: 0.006,
+  entryBack: 0.40, entryFwd: 0.05, entryFwdStrong: 0.15,
+  stopAtr: 0.50, stopVwapAtr: 0.25,
+  stopMinPct: 0.004, stopMaxPct: 0.015,
+  t1R: 1.5, t2R: 2.5
+};
+
+function tickSize(p){
+  if(p < 10) return 0.01;
+  if(p < 50) return 0.05;
+  if(p < 100) return 0.1;
+  if(p < 500) return 0.5;
+  if(p < 1000) return 1;
+  return 5;
+}
+function rTick(p, dir){
+  if(p === null || p === undefined || !(p > 0) || !isFinite(p)) return null;
+  const t = tickSize(p);
+  const n = p / t;
+  const v = dir === "down" ? Math.floor(n + 1e-9) : (dir === "up" ? Math.ceil(n - 1e-9) : Math.round(n));
+  return Math.round(v * t * 100) / 100;
+}
+function pctFrom(a, b){ return (a && b) ? (a - b) / b * 100 : null; }
+
+function buildDayTrade(st, v){
+  const px = st.lastPrice;
+  const vw = vwapOf(st);
+  const hi0 = st.high && isFinite(st.high) ? st.high : px;
+  const lo0 = st.low && isFinite(st.low) && st.low < 1e17 ? st.low : px;
+  const atr = Math.max(hi0 - lo0, (px || 0) * DT.atrFloorPct);
+
+  const out = {
+    px, vwap: vw, atr, dir: "wait", strong: false,
+    conf: v ? v.confidence : "低", reason: "", notes: [],
+    entryLo: null, entryHi: null, entryRef: null, stop: null,
+    t1: null, t2: null, rr1: null, rr2: null,
+    stopPct: null, block: [], waits: { long: [], short: [] }, src: ""
+  };
+  if(!(px > 0)){ out.block.push("尚未取得成交價"); out.dir = "block"; return out; }
+
+  // ---- 一句話理由：引用貢獻最大的 3 條規則 ----
+  if(v){
+    const picks = v.rules.filter(r => r.score !== null && Math.abs(r.score) > 0.05)
+      .sort((a, b) => Math.abs(b.score * b.weight) - Math.abs(a.score * a.weight))
+      .slice(0, 3).map(r => r.short || r.name);
+    out.reason = picks.length ? picks.join("、") : "各項指標皆未達門檻";
+  } else {
+    out.reason = "判讀尚未完成";
+  }
+
+  // ---- 硬性阻擋條件 ----
+  const elapsed = minutesElapsed(st);
+  const ms = marketStatus();
+  if(elapsed < 15){
+    if(!ms.live) out.block.push(`目前非盤中時段（${ms.text}），本頁須在交易時間開著才能累積 VWAP 與量能基準`);
+    else out.block.push(`開盤未滿 15 分鐘（已 ${elapsed} 分），VWAP 尚未穩定`);
+  }
+  if(st.samples.length < 3) out.block.push("取樣不足 3 筆，尚未建立盤中基準");
+  if(st.atLimit) out.block.push("目前漲停／跌停鎖住，五檔只剩單邊掛單，風險報酬無法評估");
+  if(st.avg20 && st.lastVol && st.lastVol < st.avg20 * 0.15)
+    out.block.push(`成交量僅 20 日均量的 ${(st.lastVol / st.avg20 * 100).toFixed(0)}%（低於 15%），流動性不足`);
+  if(st.limitUp > 0 && (st.limitUp - px) / px < 0.01)
+    out.block.push(`距漲停僅 ${((st.limitUp - px) / px * 100).toFixed(2)}%（<1%），上檔空間不足`);
+  if(st.limitDown > 0 && (px - st.limitDown) / px < 0.01)
+    out.block.push(`距跌停僅 ${((px - st.limitDown) / px * 100).toFixed(2)}%（<1%），下檔空間不足`);
+
+  // ---- 方向 ----
+  let dir = "wait";
+  if(v){
+    if(v.level === "strong_bull"){ dir = "long"; out.strong = true; }
+    else if(v.level === "mild_bull") dir = "long";
+    else if(v.level === "strong_bear"){ dir = "short"; out.strong = true; }
+    else if(v.level === "mild_bear") dir = "short";
+  }
+
+  // ---- 軟性降級（不給價位，但說明原因）----
+  if(dir !== "wait"){
+    if(v && v.confidence === "低"){
+      out.notes.push("判讀信心度為低（" + (v.confidenceReason || "訊號分歧") + "），先不給價位");
+      dir = "wait";
+    } else if(v && v.contradictions && v.contradictions.length){
+      out.notes.push("多空訊號矛盾： " + v.contradictions[0]);
+      dir = "wait";
+    } else if(vw){
+      const band = settings.vwapBand;
+      if(dir === "long" && px < vw * (1 - band / 100)){
+        out.notes.push(`現價 ${fmt(px)} 已在 VWAP ${fmt(vw)} 之下，做多前提不成立`);
+        dir = "wait";
+      }
+      if(dir === "short" && px > vw * (1 + band / 100)){
+        out.notes.push(`現價 ${fmt(px)} 已在 VWAP ${fmt(vw)} 之上，做空前提不成立`);
+        dir = "wait";
+      }
+    }
+  }
+
+  // ---- 等待條件（觀望時告訴你要等什麼）----
+  const vr = (st.avg20 && st.lastVol) ? st.lastVol / st.avg20 : null;
+  const vrTxt = vr !== null ? vr.toFixed(2) : "—";
+  if(vw){
+    if(px < vw * (1 - settings.vwapBand / 100))
+      out.waits.long.push(`站上 VWAP <b>${fmt(vw)}</b> 並維持 ${settings.vwapPersist} 分鐘以上`);
+    else
+      out.waits.long.push(`守住 VWAP <b>${fmt(vw)}</b> 不破（目前 ${fmt(px)}）`);
+    if(px > vw * (1 + settings.vwapBand / 100))
+      out.waits.short.push(`跌破 VWAP <b>${fmt(vw)}</b> 並維持 ${settings.vwapPersist} 分鐘以上`);
+    else
+      out.waits.short.push(`反彈至 VWAP <b>${fmt(vw)}</b> 附近受阻`);
+  }
+  if(vr === null || vr < settings.volSurge)
+    out.waits.long.push(`成交量放大到 20 日均量的 ${settings.volSurge} 倍以上（目前 ${vrTxt} 倍）`);
+  out.waits.long.push(`帶量突破今日高點 <b>${fmt(hi0)}</b>（近 ${settings.breakoutWin} 分量能需達 ${settings.breakoutRatio} 倍）`);
+  out.waits.short.push(`帶量跌破今日低點 <b>${fmt(lo0)}</b>（近 ${settings.breakoutWin} 分量能需達 ${settings.breakoutRatio} 倍）`);
+  if(st.hasBook && st.bookRatio !== null)
+    out.waits.short.push(`五檔買賣比由 ${st.bookRatio.toFixed(2)} 轉為委賣壓過委買（≤ ${(1 / settings.bookRatio).toFixed(2)}）`);
+  else
+    out.waits.short.push("五檔轉為委賣量明顯大於委買量（需接上後端代理才看得到）");
+
+  out.dir = out.block.length ? "block" : dir;
+  if(out.dir === "wait" || out.dir === "block") return out;
+
+  // ---- 價位計算 ----
+  const fwd = out.strong ? DT.entryFwdStrong : DT.entryFwd;
+  let entryLoRaw, entryHiRaw, stopRaw;
+
+  if(out.dir === "long"){
+    entryLoRaw = Math.max(px - DT.entryBack * atr, vw ? vw - 0.10 * atr : -Infinity);
+    entryHiRaw = px + fwd * atr;
+    out.entryLo = rTick(Math.min(entryLoRaw, px), "down");
+    out.entryHi = rTick(Math.max(entryHiRaw, px), "up");
+    if(out.entryLo !== null && out.entryHi !== null && out.entryLo > out.entryHi){
+      const tmp = out.entryLo; out.entryLo = out.entryHi; out.entryHi = tmp;
+    }
+    out.entryRef = out.entryHi;                       // 保守起算價（較差成交）
+    stopRaw = Math.min(out.entryLo - DT.stopAtr * atr, vw ? vw - DT.stopVwapAtr * atr : Infinity);
+  } else {
+    entryHiRaw = Math.min(px + DT.entryBack * atr, vw ? vw + 0.10 * atr : Infinity);
+    entryLoRaw = px - fwd * atr;
+    out.entryHi = rTick(Math.max(entryHiRaw, px), "up");
+    out.entryLo = rTick(Math.min(entryLoRaw, px), "down");
+    if(out.entryLo !== null && out.entryHi !== null && out.entryLo > out.entryHi){
+      const tmp = out.entryLo; out.entryLo = out.entryHi; out.entryHi = tmp;
+    }
+    out.entryRef = out.entryLo;
+    stopRaw = Math.max(out.entryHi + DT.stopAtr * atr, vw ? vw + DT.stopVwapAtr * atr : -Infinity);
+  }
+
+  const ref = out.entryRef;
+  const distMin = ref * DT.stopMinPct, distMax = ref * DT.stopMaxPct;
+  let dist = Math.abs(ref - stopRaw);
+  dist = Math.min(Math.max(dist, distMin), distMax);
+
+  // 區間過寬時收窄：停損是從較差成交價起算，若區間本身就比停損上限寬，
+  // 停損會被推到區間外太遠，導致 R 被撐大、目標價失真。把區間往 ref 收。
+  const maxSpread = distMax * 0.85;
+  if(out.dir === "long" && (out.entryHi - out.entryLo) > maxSpread){
+    out.entryLo = rTick(Math.max(out.entryHi - maxSpread, out.entryLo), "up");
+  } else if(out.dir === "short" && (out.entryHi - out.entryLo) > maxSpread){
+    out.entryHi = rTick(Math.min(out.entryLo + maxSpread, out.entryHi), "down");
+  }
+
+  // ★ 跳動檔位校正：高價股 tick 可能是 5 點（例：1250 附近），對齊後距離會被推偏，
+  //   因此對齊完再逐檔往內/往外修正，確保停損距離仍落在 0.4%~1.5%。
+  function alignStop(px, tgt, step){
+    // px: 進場起算價, tgt: 想要的停損價, step: 往哪個方向修（long: +1 往內、short: -1 往內）
+    let s = rTick(tgt, step > 0 ? "down" : "up");
+    if(s === null) return null;
+    for(let i = 0; i < 12; i++){
+      const p = Math.abs((s - px) / px) * 100;
+      if(p > DT.stopMaxPct * 100) s = rTick(s + step * tickSize(s), step > 0 ? "up" : "down");
+      else if(p < DT.stopMinPct * 100) s = rTick(s - step * tickSize(s), step > 0 ? "down" : "up");
+      else break;
+    }
+    return s;
+  }
+
+  if(out.dir === "long"){
+    out.stop = alignStop(ref, ref - dist, +1);   // 太遠→往內收；太近→往外放
+    if(out.stop !== null && out.entryLo !== null && out.stop >= out.entryLo)
+      out.stop = rTick(out.entryLo - tickSize(out.entryLo), "down");
+    const R = ref - out.stop;
+    // 目標价往「有利方向」取整（向上），確保 R:R 不會因捨入而低於 1.5 / 2.5
+    out.t1 = rTick(ref + DT.t1R * R, "up");
+    out.t2 = rTick(ref + DT.t2R * R, "up");
+    if(st.limitUp > 0){
+      if(out.t1 !== null) out.t1 = Math.min(out.t1, st.limitUp);
+      if(out.t2 !== null) out.t2 = Math.min(out.t2, st.limitUp);
+    }
+    if(R > 0){
+      out.rr1 = Math.abs(out.t1 - ref) / R;
+      out.rr2 = Math.abs(out.t2 - ref) / R;
+      if(out.rr1 < DT.t1R - 0.05)
+        out.notes.push(`目標 1 受漲停價 ${fmt(st.limitUp)} 壓縮，R:R 僅 ${out.rr1.toFixed(2)}（不足 1.5），建議只做目標 2 或放棄此筆`);
+    }
+  } else {
+    out.stop = alignStop(ref, ref + dist, -1);   // 太遠→往內收；太近→往外放
+    if(out.stop !== null && out.entryHi !== null && out.stop <= out.entryHi)
+      out.stop = rTick(out.entryHi + tickSize(out.entryHi), "up");
+    const R = out.stop - ref;
+    // 做空的目標价往下取整，確保 R:R 不會因捨入而低於 1.5 / 2.5
+    out.t1 = rTick(ref - DT.t1R * R, "down");
+    out.t2 = rTick(ref - DT.t2R * R, "down");
+    if(st.limitDown > 0){
+      if(out.t1 !== null) out.t1 = Math.max(out.t1, st.limitDown);
+      if(out.t2 !== null) out.t2 = Math.max(out.t2, st.limitDown);
+    }
+    if(R > 0){
+      out.rr1 = Math.abs(ref - out.t1) / R;
+      out.rr2 = Math.abs(ref - out.t2) / R;
+      if(out.rr1 < DT.t1R - 0.05)
+        out.notes.push(`目標 1 受跌停價 ${fmt(st.limitDown)} 壓縮，R:R 僅 ${out.rr1.toFixed(2)}（不足 1.5），建議只做目標 2 或放棄此筆`);
+    }
+  }
+  out.stopPct = pctFrom(out.stop, ref);
+  return out;
+}
+
+const DT_DIR_TEXT = { long: "做多", short: "做空", wait: "觀望", block: "暫不建議" };
+
+function renderDayTrade(st, v, d){
+  const conf = d.conf ? `信心度 ${d.conf}` : "";
+  const cls2 = d.dir === "long" ? "long" : (d.dir === "short" ? "short" : (d.dir === "block" ? "wait" : "wait"));
+  const pxTxt = d.px ? `現價 ${fmt(d.px)}` : "";
+
+  if(d.dir === "block"){
+    return `<div class="dt wait">
+      <div class="dt-head">
+        <span class="dt-dir sm">暫不建議進場</span>
+        <span class="dt-px">${pxTxt}</span>
+      </div>
+      <div class="dtblock">目前資料不足以給出可靠價位：
+        <ul>${d.block.map(x => `<li>${x}</li>`).join("")}</ul>
+      </div>
+    </div>`;
+  }
+
+  if(d.dir === "wait"){
+    const waitLi = (arr, limit) => arr.slice(0, limit).map(x => `<li>${x}</li>`).join("");
+    return `<div class="dt wait">
+      <div class="dt-head">
+        <span class="dt-dir">觀望</span>
+        <span class="dt-conf">${conf}</span>
+        <span class="dt-px">${pxTxt}</span>
+      </div>
+      <div class="dt-reason">${d.reason}</div>
+      ${d.notes.length ? `<div class="dtnote">${d.notes.map(n => "• " + n).join("<br>")}</div>` : ""}
+      <div class="dtwait">
+        <div class="dtwl">目前沒有明確方向，不建議進場。等下列條件出現再考慮：</div>
+        <div class="dtwl" style="margin-top:6px;color:#ff8f91">做多條件</div>
+        <ul>${waitLi(d.waits.long, 3)}</ul>
+        <div class="dtwl" style="margin-top:8px;color:#5fe0b0">做空條件</div>
+        <ul>${waitLi(d.waits.short, 3)}</ul>
+      </div>
+      <details class="dtbasis"><summary>ⓘ 計算依據</summary>
+        <div class="dtb-body">
+          方向來自原版 12 條規則的加權判讀：綜合分數 <b>${v ? signed(v.score) : "—"}</b>（判讀門檻 ±0.35 / ±1.0）。<br>
+          振幅基準 ATR = max(今日高 − 今日低, 現價 × 0.6%) = <b>${fmt(d.atr)}</b>；VWAP = <b>${d.vwap ? fmt(d.vwap) : "尚未建立"}</b>。<br>
+          觀望時不計算進場價、停損價與目標價，避免在方向未明時給出虛假精確度。
+        </div>
+      </details>
+    </div>`;
+  }
+
+  const arrow = d.dir === "long" ? "▲" : "▼";
+  const entryTxt = `${fmt(d.entryLo)} ~ ${fmt(d.entryHi)}`;
+  const stopDist = d.stopPct !== null ? `${d.stopPct >= 0 ? "+" : ""}${d.stopPct.toFixed(2)}%` : "—";
+  const stopDistTxt = d.stopPct !== null ? `${Math.abs(d.stopPct).toFixed(2)}%` : "—";
+
+  return `<div class="dt ${cls2}">
+    <div class="dt-head">
+      <span class="dt-dir">${DT_DIR_TEXT[d.dir]}</span>
+      <span class="dt-conf">${conf}</span>
+      <span class="dt-tag">當沖</span>
+      <span class="dt-px">${pxTxt}</span>
+    </div>
+    <div class="dt-reason">${arrow} ${d.reason}</div>
+    <table class="dtp">
+      <tr><td class="k">進場區間</td><td class="v">${entryTxt}</td><td class="m">${d.dir === "long" ? "回測承接" : "反彈放空"}</td></tr>
+      <tr><td class="k">停損 <span style="font-size:9.5px;opacity:.65">距離</span></td><td class="v" style="color:#ffb0b2">${fmt(d.stop)}</td><td class="m">${stopDistTxt}</td></tr>
+      <tr><td class="k">目標 1</td><td class="v" style="color:#8ff0cf">${fmt(d.t1)}</td><td class="m">R:R ${d.rr1 !== null ? d.rr1.toFixed(1) : "—"}</td></tr>
+      <tr><td class="k">目標 2</td><td class="v" style="color:#8ff0cf">${fmt(d.t2)}</td><td class="m">R:R ${d.rr2 !== null ? d.rr2.toFixed(1) : "—"}</td></tr>
+    </table>
+    ${d.notes.length ? `<div class="dtnote">${d.notes.map(n => "• " + n).join("<br>")}</div>` : ""}
+    <details class="dtbasis"><summary>ⓘ 計算依據</summary>
+      <div class="dtb-body">
+        <b>方向</b>：原版加權判讀綜合分數 <b>${v ? signed(v.score) : "—"}</b>（${v ? LEVEL_TEXT[v.level] : "—"}），信心度 <b>${d.conf}</b>。<br>
+        <b>波動基準</b>：ATR = max(今日高 − 今日低, 現價 × 0.6%) = <b>${fmt(d.atr)}</b>；VWAP = <b>${d.vwap ? fmt(d.vwap) : "—"}</b>。<br>
+        <b>進場</b>：${d.dir === "long"
+          ? `max(現價 − 0.40×ATR, VWAP − 0.10×ATR) ~ 現價 + ${d.strong ? "0.15" : "0.05"}×ATR`
+          : `現價 − ${d.strong ? "0.15" : "0.05"}×ATR ~ min(現價 + 0.40×ATR, VWAP + 0.10×ATR)`}。<br>
+        <b>停損</b>：${d.dir === "long"
+          ? "min(進場下緣 − 0.50×ATR, VWAP − 0.25×ATR)"
+          : "max(進場上緣 + 0.50×ATR, VWAP + 0.25×ATR)"}，再限制在進場價 0.4%~1.5% 內。<br>
+        <b>目標</b>：R = |進場起算價 − 停損| = <b>${d.entryRef !== null && d.stop !== null ? fmt(Math.abs(d.entryRef - d.stop)) : "—"}</b>，
+        目標 1 = 1.5R、目標 2 = 2.5R（R:R 以較差成交價 ${fmt(d.entryRef)} 起算，偏保守）。<br>
+        <b>跳動檔位</b>：已對齊台股升降單位（${fmt(tickSize(d.px))}）。
+      </div>
+    </details>
+  </div>`;
+}
+
+function evaluateIntraday(st, q){
+  const [above, below] = minutesOnSide(st);
+  const vr = recentVolumeRatio(st, settings.breakoutWin);
+  let direction = null, ref = null;
+  if(q.high>0 && q.price >= q.high*(1-1e-9) && q.high > (st.open||q.high)){ direction="up"; ref=q.high; }
+  else if(q.low>0 && q.price <= q.low*(1+1e-9) && q.low < (st.open||q.low)){ direction="down"; ref=q.low; }
+
+  const ctx = {
+    code: st.code, name: st.name || q.name, asOf: q.time,
+    price: q.price, vwap: vwapOf(st),
+    minutesAbove: above, minutesBelow: below, minutesElapsed: minutesElapsed(st),
+    tapeForeignRatio: tapeForeignRatio(st), intradayVolumeRatio: vr,
+    bigBuyCount: st.hasBook ? st.bigBuy : null, bigSellCount: st.hasBook ? st.bigSell : null,
+    bigBuyValue: st.bigBuyVal, bigSellValue: st.bigSellVal,
+    breakoutDirection: direction, breakoutRefPrice: ref, breakoutVolumeRatio: vr,
+    bookRatio: st.hasBook ? st.bookRatio : null, atLimit: st.atLimit,
+    volumeLots: q.vol, avg20: st.avg20, chgPct: q.chgPct, high: q.high, low: q.low
+  };
+  const results = [ ruleVwap(ctx), ruleTape(ctx), ruleBigOrder(ctx), ruleBreakout(ctx), ruleBook(ctx), rulePriceVolume(ctx) ];
+  return combineRules(results, st.code, ctx.name, q.time);
+}
+
+/* =========================================================================
+   主迴圈
+   ========================================================================= */
+async function tick(){
+  const codes = watch.map(w=>w.code);
+  if(!codes.length){ render(); return; }
+  let quotes = {};
+  try{
+    quotes = await fetchQuotes(codes);
+    lastFetchOk = Date.now();
+  }catch(e){
+    toast("取價失敗："+e.message);
+    render(); return;
+  }
+  const timeStr = hhmmss(tpeNow());
+  let alertsThisCycle = 0;
+
+  for(const w of watch){
+    const q = quotes[w.code];
+    if(!q || !q.price) continue;
+    let st = stocks[w.code];
+    if(!st){ st = stocks[w.code] = newState(w.code, w.name); }
+    if(q.name) st.name = q.name;
+    q.time = timeStr;
+
+    const sample = addSample(st, q);
+    st.lastPrice = q.price; st.lastChgPct = q.chgPct; st.lastVol = q.vol; st.lastTime = timeStr;
+
+    if(st.avg20State === "pending"){
+      st.avg20State = "loading";
+      fetchAvg20(w.code).then(a=>{ st.avg20 = a; st.avg20State = a?"ok":"na"; });
+    }
+
+    // 判讀
+    st.verdict = evaluateIntraday(st, q);
+    // 當沖決策（方向 + 三個價位）
+    st.daytrade = buildDayTrade(st, st.verdict);
+
+    // 觸發訊號（含冷卻）
+    if(alertsThisCycle < settings.maxPerCycle && st.alertCount < settings.maxPerStock){
+      const trigs = detectTriggers(st, q, sample);
+      const passed = trigs.filter(t=>cooldownOk(st, t.kind, t.cd));
+      passed.forEach(t=>{
+        st.alertCount++; alertsThisCycle++;
+        signals.push({ ts: Date.now(), time: timeStr, code: st.code, name: st.name,
+          kind: t.kind, label: KIND_LABEL[t.kind]||t.kind, reason: t.reason,
+          severity: t.severity, price: q.price, chgPct: q.chgPct });
+      });
+    }
+  }
+  const today = tpeNow().toDateString();
+  signals = signals.filter(s => new Date(s.ts).toDateString() === today).slice(-300);
+  render();
+}
+
+const KIND_LABEL = { big_order:"大單敲進", tape:"內外盤失衡", breakout:"爆量突破", book:"五檔失衡", price:"漲跌幅達標", limit:"漲跌停", vwap:"VWAP", price_volume:"量價關係" };
+
+/* =========================================================================
+   渲染
+   ========================================================================= */
+function render(){
+  const ms = marketStatus();
+  $("#mktDot").className = "dot" + (ms.live?" live":"");
+  $("#mktText").textContent = ms.text;
+  $("#lastUpd").textContent = lastFetchOk ? ("最後更新 "+hhmmss(new Date(lastFetchOk))) : "尚未取得資料";
+  const srcTxt = dataSource==="proxy" ? "代理（MIS 五檔）" : "鉅亨網（無五檔）";
+  $("#srcText").textContent = "資料源 "+srcTxt;
+  $("#srcName").textContent = srcTxt;
+
+  const bull = signals.filter(s=>s.chgPct>0).length;
+  const bear = signals.filter(s=>s.chgPct<0).length;
+  const dts = Object.values(stocks).map(s=>s.daytrade).filter(Boolean);
+  const nLong = dts.filter(d=>d.dir==="long").length;
+  const nShort = dts.filter(d=>d.dir==="short").length;
+  $("#summary").innerHTML = [
+    `<span class="pill">監控 <b>${watch.length}</b> 檔</span>`,
+    `<span class="pill">做多 <b class="up">${nLong}</b></span>`,
+    `<span class="pill">做空 <b class="down">${nShort}</b></span>`,
+    `<span class="pill">今日訊號 <b>${signals.length}</b> 則</span>`,
+    `<span class="pill">刷新 <b>${settings.poll}</b> 秒</span>`
+  ].join("");
+
+  // timeline
+  $("#sigCnt").textContent = signals.length ? `共 ${signals.length} 則` : "";
+  const tl = $("#timeline");
+  if(!signals.length){
+    tl.innerHTML = `<div class="empty">尚無訊號。盤中觸發時會即時列在這裡。</div>`;
+  } else {
+    const sorted = signals.slice().sort((a,b)=>b.ts-a.ts);
+    tl.innerHTML = sorted.map(s=>{
+      const rowCls = s.severity==="alert" ? "alert" : (s.chgPct>0?"bull":(s.chgPct<0?"bear":""));
+      return `<div class="tlrow ${rowCls}">
+        <div class="tltime">${s.time}</div>
+        <div class="tlmain">
+          <div class="tlhead">
+            <span class="tlcode">${s.code}</span>
+            <span class="tlname">${s.name||""}</span>
+            <span class="badge ${s.kind}">${s.label}</span>
+          </div>
+          <div class="tlreason">${s.reason}</div>
+        </div>
+        <div class="tlright ${cls(s.chgPct)}">${fmt(s.price)}<br>${pct(s.chgPct)}</div>
+      </div>`;
+    }).join("");
+  }
+
+  // cards
+  $("#cardCnt").textContent = watch.length ? `共 ${watch.length} 檔` : "";
+  const cards = $("#cards");
+  if(!watch.length){
+    cards.innerHTML = `<div class="empty">尚未加入任何股票。在上方輸入代號即可開始監控。</div>`;
+  } else {
+    cards.innerHTML = watch.map(w=>{
+      const st = stocks[w.code];
+      if(!st || st.lastPrice===null){
+        return `<div class="card"><div class="cardHead"><div class="ident"><span class="code">${w.code}</span><span class="name">${w.name||""}</span></div>
+          <button class="del" data-del="${w.code}" title="移除">✕</button></div>
+          <div class="empty" style="padding:14px 0">等待報價…</div></div>`;
+      }
+      const c = cls(st.lastChgPct);
+      const v = st.verdict;
+      const dt = st.daytrade;
+      const vw = vwapOf(st);
+      const vr20 = (st.avg20 && st.lastVol) ? (st.lastVol/st.avg20) : null;
+      const avgTxt = st.avg20State==="ok" ? fmtInt(st.avg20)+" 張" : (st.avg20State==="na" ? "—（上櫃無日線）" : "載入中…");
+      const ruleHtml = v ? v.rules.map(r=>{
+        if(r.score===null) return `<li class="na"><span class="ric">⬛</span><span class="rname">${r.name}</span><span class="rscore">資料不可用</span></li>`;
+        const ic = r.score>=0.75?"🟢":(r.score<=-0.75?"🔴":(r.score>0.05?"🟡":(r.score<-0.05?"🟠":"⚪")));
+        return `<li><span class="ric">${ic}</span><span class="rname">${r.name}</span><span class="rscore">${signed(r.score)} ×${r.weight.toFixed(1)}</span><span class="rshort">${r.short||"—"}</span></li>`;
+      }).join("") : "";
+      const missHtml = (v && v.missing.length) ? `<div class="cardFoot" style="color:#8a7a52">資料缺失：${v.missing.length} 條（見下方說明）</div>` : "";
+      return `<div class="card ${c}">
+        <div class="cardHead">
+          <div class="ident"><span class="code">${st.code}</span><span class="name">${st.name||w.name||""}</span></div>
+          <button class="del" data-del="${w.code}" title="移除">✕</button>
+        </div>
+        ${dt ? renderDayTrade(st, v, dt) : ""}
+        <div class="priceRow">
+          <span class="price ${c}">${fmt(st.lastPrice)}</span>
+          <span class="chg ${c}">${pct(st.lastChgPct)}</span>
+        </div>
+        ${v?`<div class="verdict lv-${v.level}">
+          <div class="vhead">${v.headline}</div>
+          <div class="vmeta">綜合分數 ${signed(v.score)} · 信心度 ${v.confidence} · ${v.asOf||""}</div>
+        </div>
+        <ul class="rulelist">${ruleHtml}</ul>`:""}
+        <div class="grid6">
+          <div class="cell"><span class="k">開</span><span class="v">${fmt(st.open)}</span></div>
+          <div class="cell"><span class="k">高</span><span class="v">${fmt(st.high)}</span></div>
+          <div class="cell"><span class="k">低</span><span class="v">${fmt(st.low)}</span></div>
+          <div class="cell"><span class="k">昨收</span><span class="v">${fmt(st.prevClose)}</span></div>
+          <div class="cell"><span class="k">量</span><span class="v">${fmtInt(st.lastVol)} 張</span></div>
+          <div class="cell"><span class="k">20日均量</span><span class="v">${avgTxt}</span></div>
+          <div class="cell"><span class="k">量比</span><span class="v">${vr20!==null?vr20.toFixed(2)+" 倍":"—"}</span></div>
+          <div class="cell"><span class="k">VWAP</span><span class="v">${vw?fmt(vw):"—"}</span></div>
+          <div class="cell"><span class="k">更新</span><span class="v">${st.lastTime||"—"}</span></div>
+        </div>
+        ${st.hasBook ? `<div class="bookrow">
+          <span class="bk">五檔</span>
+          <span class="bv">委買 <b class="up">${fmtInt(st.bidTotal)}</b> 張</span>
+          <span class="bv">委賣 <b class="down">${fmtInt(st.askTotal)}</b> 張</span>
+          <span class="bv">買賣比 <b>${st.bookRatio!==null?st.bookRatio.toFixed(2):"—"}</b></span>
+          <span class="bv">外盤比 <b>${tapeForeignRatio(st)!==null?(tapeForeignRatio(st)*100).toFixed(0)+"%":"—"}</b></span>
+        </div>` : `<div class="bookrow na"><span class="bk">五檔</span><span class="bv">未接代理，五檔/內外盤不可用</span></div>`}
+        ${missHtml}
+        <div class="cardFoot"><span>今日訊號 ${signals.filter(s=>s.code===w.code).length} 則</span><span>${st.avg20State==="na"?"量比需上市日線":""}</span></div>
+      </div>`;
+    }).join("");
+  }
+}
+
+/* =========================================================================
+   規則對照表
+   ========================================================================= */
+const RULES = [
+  ["外資連續買賣超 <code>chip_foreign_streak</code>","no","T+1 收盤後籌碼（三大法人），非盤中即時。原版屬 A 方案（收盤報告），B 方案盤中不含。"],
+  ["投信連續買賣超 <code>chip_trust_streak</code>","no","同上，T+1 收盤後資料。"],
+  ["法人買超佔量比重 <code>chip_net_buy_ratio</code>","no","需三大法人買賣超（T+1），非盤中。"],
+  ["分點集中度 <code>chip_broker_concentration</code>","no","原版即標示不可用：證交所 BSR 端點回 302/405，FinMind 需付費 token。"],
+  ["集保大戶持股週變化 <code>chip_big_holder</code>","no","TDCC 週資料、落後 4 天以上，且純前端 CORS 被擋。"],
+  ["融資與價格背離 <code>chip_margin_divergence</code>","no","融資餘額為 T+1 收盤後資料。"],
+  ["量價關係 <code>chip_price_volume</code>","ok","<b>已移植</b>（原版 A 方案規則，網頁版盤中可算）：爆量長紅/長黑/長上影/量縮，門檻沿用原版（量 2.0 倍、漲跌 2%、上影 0.5、收盤位置 0.7/0.3）。"],
+  ["價格相對 VWAP <code>tech_vwap</code>","ok","<b>已移植</b>：以取樣增量回推 VWAP，門檻 0.15%、持續 15 分鐘。與原版演算法相同。"],
+  ["內外盤比 <code>tech_tape</code>","ok","<b>已移植</b>（需代理）：以「成交價 vs 賣一/買一」累計外盤/內盤量，外盤比 ≥ 65% 觸發（量增時加分）。未接代理時標示不可用。"],
+  ["大單方向 <code>tech_big_order</code>","ok","<b>已移植</b>（需代理）：單筆增量 ≥ 100 張或 ≥ 500 萬視為大單，依成交價 vs 買賣價判定外盤/內盤，淨外盤 ≥ 3 筆且金額顯著 → +2。未接代理時只能偵測「量」。"],
+  ["突破量能 <code>tech_breakout</code>","ok","<b>已移植</b>：近 5 分鐘量 / 先前均量 ≥ 3.0 倍，並標示是否創當日新高/低。"],
+  ["五檔失衡 <code>tech_book</code>","ok","<b>已移植</b>（需代理）：委買/委賣 ≥ 2.0 倍 → +1.0；漲跌停鎖住時標示不可用。未接代理時標示不可用。"],
+  ["到價提醒 / 漲跌幅門檻 <code>price_trigger</code>","ok","<b>已移植</b>：漲跌幅達 ±5% 觸發（原版 change_pct_alert）。"],
+  ["漲跌停 <code>limit</code>","ok","<b>已移植</b>：觸及漲停/跌停即提示。"]
+];
+function renderRules(){
+  $("#rulesBody").innerHTML = RULES.map(([name,st,desc])=>{
+    const c = st==="ok"?"ok":(st==="part"?"part":"no");
+    const txt = st==="ok"?"可支援":(st==="part"?"部分支援":"無法取得");
+    return `<tr><td>${name}</td><td><span class="st ${c}">${txt}</span></td><td>${desc}</td></tr>`;
+  }).join("");
+}
+
+/* =========================================================================
+   參數面板
+   ========================================================================= */
+const FIELDS = [
+  ["bigLots","大單門檻（張）","單次取樣成交量增量達此值視為大單",1],
+  ["bigValue","大單門檻（元）","單次成交金額達此值亦視為大單",10000],
+  ["volSurge","爆量倍數","成交量 / 20 日均量 達此倍數視為爆量",0.1],
+  ["volQuiet","量縮倍數","成交量 / 20 日均量 低於此值視為量縮",0.1],
+  ["bigMove","長紅/長黑漲跌幅（%）","漲跌幅達此值才算大漲/大跌",0.1],
+  ["upperShadow","長上影線比例","上影線佔當日振幅達此比例視為長上影",0.05],
+  ["breakoutWin","爆量突破視窗（分）","近 N 分鐘量與先前均量比較",1],
+  ["breakoutRatio","爆量突破倍數","近 N 分鐘量達先前均量此倍數",0.1],
+  ["vwapBand","VWAP 偏離門檻（%）","價格偏離 VWAP 達此值才算站上/跌破",0.01],
+  ["vwapPersist","VWAP 持續時間（分）","站上/跌破需持續此分鐘數",1],
+  ["changeAlert","漲跌幅警示（%）","漲跌幅達此值觸發到價提醒",0.1],
+  ["wVwap","權重：VWAP","原版 weights.tech_vwap",0.1],
+  ["wBreakout","權重：突破量能","原版 weights.tech_breakout",0.1],
+  ["wPriceVolume","權重：量價關係","原版 weights.chip_price_volume",0.1],
+  ["cdBigOrder","冷卻：大單（秒）","同檔同類訊號不重複轟炸",10],
+  ["cdBreakout","冷卻：爆量突破（秒）","",10],
+  ["cdPrice","冷卻：到價（秒）","",10]
+];
+function renderSettings(){
+  const conn = `
+    <div class="field"><label>後端代理網址</label>
+      <input type="text" id="setProxyUrl" value="${settings.proxyUrl||""}" placeholder="http://127.0.0.1:8787" />
+      <span class="desc">啟動 proxy.py 後填入其網址；留空或連不上則自動退回鉅亨網</span></div>
+    <div class="field"><label>資料模式</label>
+      <select id="setDataMode">
+        <option value="auto"${settings.dataMode==="auto"?" selected":""}>自動（先試代理，失敗退回鉅亨）</option>
+        <option value="proxy"${settings.dataMode==="proxy"?" selected":""}>只用代理（完整五檔）</option>
+        <option value="cnyes"${settings.dataMode==="cnyes"?" selected":""}>只用鉅亨（純前端）</option>
+      </select>
+      <span class="desc">代理模式才能算內外盤比、五檔失衡、大單方向</span></div>`;
+  $("#sgrid").innerHTML = conn + FIELDS.map(([k,label,desc,step])=>{
+    return `<div class="field"><label>${label}</label>
+      <input type="number" data-set="${k}" value="${settings[k]}" step="${step}" />
+      <span class="desc">${desc}</span></div>`;
+  }).join("");
+}
+function saveSettings(){
+  document.querySelectorAll("[data-set]").forEach(inp=>{
+    const k = inp.getAttribute("data-set");
+    const v = parseFloat(inp.value);
+    if(!isNaN(v)) settings[k] = v;
+  });
+  const pu = $("#setProxyUrl"); if(pu) settings.proxyUrl = pu.value.trim();
+  const dm = $("#setDataMode"); if(dm) settings.dataMode = dm.value;
+  LS.set("twstock_settings", settings);
+  toast("參數已儲存");
+  restartTimer();
+  tick();
+}
+
+/* =========================================================================
+   事件
+   ========================================================================= */
+function addStock(code){
+  code = String(code||"").trim().toUpperCase();
+  if(!/^[0-9A-Z]{4,6}$/.test(code)){ toast("代號格式錯誤（例如 2330、6488、0050）"); return; }
+  if(watch.some(w=>w.code===code)){ toast("已在監控清單中"); return; }
+  watch.push({code, name:""});
+  LS.set("twstock_watch", watch);
+  stocks[code] = newState(code, "");
+  toast("已加入 "+code);
+  tick();
+}
+function delStock(code){
+  watch = watch.filter(w=>w.code!==code);
+  LS.set("twstock_watch", watch);
+  delete stocks[code];
+  signals = signals.filter(s=>s.code!==code);
+  render();
+}
+function restartTimer(){
+  if(timer) clearInterval(timer);
+  timer = setInterval(tick, settings.poll*1000);
+}
+
+document.addEventListener("DOMContentLoaded", ()=>{
+  renderRules();
+  renderSettings();
+  $("#pollSel").value = String(settings.poll);
+
+  $("#addForm").addEventListener("submit", e=>{ e.preventDefault(); addStock($("#codeInput").value); $("#codeInput").value=""; });
+  $("#cards").addEventListener("click", e=>{ const b=e.target.closest("[data-del]"); if(b) delStock(b.getAttribute("data-del")); });
+  $("#btnRefresh").addEventListener("click", ()=>{ tick(); toast("已更新"); });
+  $("#btnSettings").addEventListener("click", ()=>{ $("#settingsPanel").classList.toggle("open"); });
+  $("#btnSaveSet").addEventListener("click", saveSettings);
+  $("#btnResetSet").addEventListener("click", ()=>{ settings = Object.assign({}, DEFAULTS); LS.set("twstock_settings", settings); renderSettings(); restartTimer(); toast("已回復原版預設"); });
+  $("#pollSel").addEventListener("change", e=>{ settings.poll = parseInt(e.target.value,10); LS.set("twstock_settings", settings); restartTimer(); render(); });
+
+  watch.forEach(w=>{ if(!stocks[w.code]) stocks[w.code] = newState(w.code, w.name); });
+
+  tick();
+  restartTimer();
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) tick(); });
+});
+</script>
+</body>
+</html>
